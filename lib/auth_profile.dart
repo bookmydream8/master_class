@@ -13,9 +13,11 @@ import 'madhura_board.dart' as board;
 import 'madhura_post.dart';
 
 Future<bool> requireLogin(BuildContext context) async {
-  if (FirebaseAuth.instance.currentUser != null &&
-      !FirebaseAuth.instance.currentUser!.isAnonymous)
-    return true;
+  var user = FirebaseAuth.instance.currentUser;
+  // Wait once for Android to restore a persisted Firebase session on launch.
+  user ??= await FirebaseAuth.instance.authStateChanges().first;
+  if (user != null && !user.isAnonymous) return true;
+  if (!context.mounted) return false;
   final result = await Navigator.of(context)
       .push<bool>(MaterialPageRoute(builder: (_) => const LoginPage()));
   return result == true;
