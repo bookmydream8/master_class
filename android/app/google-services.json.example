@@ -1,0 +1,1 @@
+{  "project_info": { "project_id": "YOUR_PROJECT_ID", "project_number": "YOUR_PROJECT_NUMBER" },  "client": [{ "client_info": { "mobilesdk_app_id": "YOUR_ANDROID_APP_ID", "android_client_info": { "package_name": "com.c2c.app" } }, "api_key": [{ "current_key": "YOUR_API_KEY" }] }]}
