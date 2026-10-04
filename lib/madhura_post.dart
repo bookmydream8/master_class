@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+
 import 'firestore_database.dart';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -10,25 +12,58 @@ import 'package:image_picker/image_picker.dart';
 
 import 'madhura_board.dart' as board;
 
-class MadhuraPostForm extends StatefulWidget {
-  const MadhuraPostForm({super.key, this.existing, this.listingId});
+const spokenLanguageOptions = <String>[
+  'English',
+  'Hindi',
+  'Kannada',
+  'Tamil',
+  'Telugu',
+  'Malayalam',
+  'Marathi',
+  'Bengali',
+  'Gujarati',
+  'Punjabi',
+  'Urdu',
+  'Sanskrit',
+  'French',
+  'German',
+  'Spanish',
+  'Japanese',
+  'Korean',
+  'Mandarin Chinese',
+];
+const ageGroupOptions = <String>[
+  'Preschooler · 3–5 years',
+  'Child / Kids · 5–12 years',
+  'Teenager / Preteen · 13–19 years',
+  'Young Adult · 18–30 years',
+  'Adult · 30–45 years / 13+ general',
+  'Middle-aged · 45–65 years',
+];
+
+class MasterClassPostForm extends StatefulWidget {
+  const MasterClassPostForm({super.key, this.existing, this.listingId});
   final Map<String, dynamic>? existing;
   final String? listingId;
   @override
-  State<MadhuraPostForm> createState() => _MadhuraPostFormState();
+  State<MasterClassPostForm> createState() => _MasterClassPostFormState();
 }
 
-class _MadhuraPostFormState extends State<MadhuraPostForm> {
+class _MasterClassPostFormState extends State<MasterClassPostForm> {
   String format = 'physical';
   String category = 'Music';
   String? focus;
   String city = '';
+  final customCity = TextEditingController();
   bool isFree = true;
   bool saving = false;
   bool locating = false;
   String? error;
   DateTime? startDate;
+  DateTime? expiryDate;
   TimeOfDay? startTime;
+  final ageGroups = <String>{};
+  final spokenLanguages = <String>{};
   XFile? selectedPhoto;
   final title = TextEditingController();
   final description = TextEditingController();
@@ -37,6 +72,9 @@ class _MadhuraPostFormState extends State<MadhuraPostForm> {
   final previousLinks = TextEditingController();
   final price = TextEditingController();
   final mapLink = TextEditingController();
+  final landmark = TextEditingController();
+  final sessionLink = TextEditingController();
+  final contactNumber = TextEditingController();
   final customCategory = TextEditingController();
   final customSubcategory = TextEditingController();
 
@@ -44,14 +82,21 @@ class _MadhuraPostFormState extends State<MadhuraPostForm> {
   void initState() {
     super.initState();
     final data = widget.existing;
-    if (data == null) return;
+    if (data == null) {
+      _loadProfileDefaults();
+      return;
+    }
     format = (data['listing_type'] ?? 'physical').toString();
     category = board.categories.keys.firstWhere(
       (key) => board.categoryIds[key] == data['category'],
       orElse: () => 'Music',
     );
     focus = data['subcategory']?.toString();
-    city = data['city']?.toString() ?? ''; 
+    city = data['city']?.toString() ?? '';
+    if (city.isNotEmpty && !board.cities.contains(city)) {
+      customCity.text = city;
+      city = '_custom';
+    }
     isFree = data['is_free'] == true || data['priceType'] == 'free';
     title.text = (data['title'] ?? '').toString();
     description.text = (data['description'] ?? '').toString();
@@ -60,15 +105,65 @@ class _MadhuraPostFormState extends State<MadhuraPostForm> {
     durationDays.text = (data['duration_days'] ?? '').toString();
     previousLinks.text = (data['previous_class_links'] ?? '').toString();
     mapLink.text = (data['map_location'] ?? '').toString();
+    landmark.text = (data['landmark'] ?? '').toString();
+    _loadPrivateContact();
     startDate = DateTime.tryParse((data['start_date'] ?? '').toString());
+    expiryDate =
+        DateTime.tryParse((data['expiry_date'] ?? '').toString()) ?? startDate;
+    ageGroups.addAll(
+      (data['age_groups'] as List? ?? const []).map(
+        (value) => value.toString(),
+      ),
+    );
+    if (ageGroups.isEmpty && (data['age_group'] ?? '').toString().isNotEmpty)
+      ageGroups.add(data['age_group'].toString());
+    spokenLanguages.addAll(
+      (data['spoken_languages'] as List? ?? const []).map(
+        (value) => value.toString(),
+      ),
+    );
     final time = (data['start_time'] ?? '').toString().split(':');
-    if (time.length == 2) startTime = TimeOfDay(hour: int.tryParse(time[0]) ?? 0, minute: int.tryParse(time[1]) ?? 0);
+    if (time.length == 2)
+      startTime = TimeOfDay(
+        hour: int.tryParse(time[0]) ?? 0,
+        minute: int.tryParse(time[1]) ?? 0,
+      );
+  }
+
+  Future<void> _loadProfileDefaults() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      final profile =
+          (await firestore.collection('profiles').doc(user.uid).get()).data();
+      if (!mounted || profile == null) return;
+      setState(() {
+        aboutMaster.text = (profile['expertDetails'] ?? '').toString();
+        contactNumber.text = (profile['phoneNumber'] ?? '').toString();
+        final profileCity =
+            (profile['city'] ?? profile['preferredPhysicalCity'] ?? '')
+                .toString();
+        if (profileCity.isNotEmpty) {
+          if (board.cities.contains(profileCity)) {
+            city = profileCity;
+          } else {
+            city = '_custom';
+            customCity.text = profileCity;
+          }
+        }
+      });
+    } catch (_) {}
   }
 
   Future<void> choosePhoto() async {
-    final photo = await ImagePicker().pickImage(source: ImageSource.gallery, maxWidth: 900, imageQuality: 65);
+    final photo = await ImagePicker().pickImage(
+      source: ImageSource.gallery,
+      maxWidth: 900,
+      imageQuality: 65,
+    );
     if (photo != null && mounted) setState(() => selectedPhoto = photo);
   }
+
   @override
   void dispose() {
     for (final controller in [
@@ -79,12 +174,27 @@ class _MadhuraPostFormState extends State<MadhuraPostForm> {
       previousLinks,
       price,
       mapLink,
+      customCity,
       customCategory,
       customSubcategory,
     ]) {
       controller.dispose();
     }
     super.dispose();
+  }
+
+  Future<void> _loadPrivateContact() async {
+    final id = widget.listingId;
+    if (id == null) return;
+    try {
+      final data =
+          (await firestore.collection('listings_contact').doc(id).get()).data();
+      if (!mounted || data == null) return;
+      sessionLink.text = (data['sessionLink'] ?? '').toString();
+      contactNumber.text = (data['contactNumber'] ?? '').toString();
+    } catch (_) {
+      // Private details may not exist for older listings.
+    }
   }
 
   Future<void> pickDate() async {
@@ -94,7 +204,25 @@ class _MadhuraPostFormState extends State<MadhuraPostForm> {
       firstDate: DateTime.now().subtract(const Duration(days: 1)),
       lastDate: DateTime.now().add(const Duration(days: 3650)),
     );
-    if (picked != null) setState(() => startDate = picked);
+    if (picked != null) {
+      setState(() {
+        final previousStart = startDate;
+        startDate = picked;
+        if (expiryDate == null || expiryDate == previousStart) {
+          expiryDate = picked;
+        }
+      });
+    }
+  }
+
+  Future<void> pickExpiryDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: expiryDate ?? startDate ?? DateTime.now(),
+      firstDate: startDate ?? DateTime.now().subtract(const Duration(days: 1)),
+      lastDate: DateTime.now().add(const Duration(days: 3650)),
+    );
+    if (picked != null) setState(() => expiryDate = picked);
   }
 
   Future<void> useCurrentLocation() async {
@@ -156,9 +284,28 @@ class _MadhuraPostFormState extends State<MadhuraPostForm> {
       setState(() => error = 'Add a class name and description.');
       return;
     }
+    if (startDate == null) {
+      setState(() => error = 'Select a start date.');
+      return;
+    }
+    if (expiryDate != null && expiryDate!.isBefore(startDate!)) {
+      setState(() => error = 'Expiry date cannot be before the start date.');
+      return;
+    }
     final amount = double.tryParse(price.text.trim());
     if (!isFree && (amount == null || amount < 0)) {
       setState(() => error = 'Enter a valid price in rupees.');
+      return;
+    }
+    final contact = contactNumber.text.trim();
+    final session = sessionLink.text.trim();
+    if (contact.length < 5) {
+      setState(() => error = 'A valid contact / WhatsApp number is required.');
+      return;
+    }
+    final selectedCity = city == '_custom' ? customCity.text.trim() : city;
+    if (format != 'online' && city == '_custom' && selectedCity.isEmpty) {
+      setState(() => error = 'Enter a city name.');
       return;
     }
     setState(() {
@@ -178,33 +325,73 @@ class _MadhuraPostFormState extends State<MadhuraPostForm> {
       final now = DateTime.now();
       final ref = firestore
           .collection('listings')
-          .doc('${legacyType}_${now.millisecondsSinceEpoch}');
-      await ref.set({
-        'id': ref.id,
-        'type': legacyType,
-        'listing_type': format,
-        'category': category == 'Custom' ? customCategory.text.trim() : board.categoryIds[category],
-        'subcategory': category == 'Custom' ? customSubcategory.text.trim() : focus,
-        'title': title.text.trim(),
-        'description': description.text.trim(),
-        'about_master': aboutMaster.text.trim(),
-        if (selectedPhoto != null) 'image_base64': base64Encode(await selectedPhoto!.readAsBytes()),
-        'priceType': isFree ? 'free' : 'paid',
-        'is_free': isFree,
-        'price': isFree ? 0 : amount,
-        'start_date': startDate?.toIso8601String().substring(0, 10),
-        'start_time': startTime == null ? null : ':',
-        'duration_days': int.tryParse(durationDays.text.trim()),
-        if (previousLinks.text.trim().isNotEmpty) 'previous_class_links': previousLinks.text.trim(),
-        if (format != 'online' && city.isNotEmpty) 'city': city,
-        if (format != 'online' && mapLink.text.trim().isNotEmpty)
-          'map_location': mapLink.text.trim(),
-        if (format == 'online') 'topic': focus ?? category,
-        'creatorId': user.uid,
-        'creatorEmail': user.email ?? '',
-        'createdAt': now.toIso8601String(),
-        'updatedAt': now.toIso8601String(),
-      }).timeout(const Duration(seconds: 20));
+          .doc(
+            widget.listingId ?? '${legacyType}_${now.millisecondsSinceEpoch}',
+          );
+      await ref
+          .set({
+            'id': ref.id,
+            'type': legacyType,
+            'listing_type': format,
+            'category': category == 'Custom'
+                ? customCategory.text.trim()
+                : board.categoryIds[category],
+            'subcategory': category == 'Custom'
+                ? customSubcategory.text.trim()
+                : focus,
+            'title': title.text.trim(),
+            'description': description.text.trim(),
+            'about_master': aboutMaster.text.trim(),
+            if (selectedPhoto != null)
+              'image_base64': base64Encode(await selectedPhoto!.readAsBytes()),
+            'priceType': isFree ? 'free' : 'paid',
+            'is_free': isFree,
+            'price': isFree ? 0 : amount,
+            'start_date': startDate?.toIso8601String().substring(0, 10),
+            'start_time': startTime == null
+                ? null
+                : '${startTime!.hour.toString().padLeft(2, '0')}:${startTime!.minute.toString().padLeft(2, '0')}',
+            'duration_days': int.tryParse(durationDays.text.trim()),
+            'spoken_languages': spokenLanguages.toList()..sort(),
+            'age_groups': ageGroups.toList()..sort(),
+            'age_group': ageGroups.join(', '),
+            'expiry_date': (expiryDate ?? startDate)!
+                .toIso8601String()
+                .substring(0, 10),
+            'expires_at': Timestamp.fromDate(
+              DateTime(
+                (expiryDate ?? startDate)!.year,
+                (expiryDate ?? startDate)!.month,
+                (expiryDate ?? startDate)!.day,
+                23,
+                59,
+                59,
+              ),
+            ),
+            if (previousLinks.text.trim().isNotEmpty)
+              'previous_class_links': previousLinks.text.trim(),
+            if (format != 'online' && selectedCity.isNotEmpty)
+              'city': selectedCity,
+            if (format != 'online' && landmark.text.trim().isNotEmpty)
+              'landmark': landmark.text.trim(),
+            if (format != 'online' && mapLink.text.trim().isNotEmpty)
+              'map_location': mapLink.text.trim(),
+            if (format == 'online') 'topic': focus ?? category,
+            'creatorId': user.uid,
+            'creatorEmail': user.email ?? '',
+            'createdAt': now.toIso8601String(),
+            'updatedAt': now.toIso8601String(),
+          })
+          .timeout(const Duration(seconds: 20));
+      if (contact.isNotEmpty) {
+        await firestore.collection('listings_contact').doc(ref.id).set({
+          'id': ref.id,
+          'creatorId': user.uid,
+          'contactNumber': contact,
+          if (session.isNotEmpty) 'sessionLink': session,
+          'updatedAt': now.toIso8601String(),
+        }, SetOptions(merge: true));
+      }
       if (mounted) Navigator.of(context, rootNavigator: true).pop(true);
     } on TimeoutException {
       if (mounted) {
@@ -312,7 +499,7 @@ class _MadhuraPostFormState extends State<MadhuraPostForm> {
                   height: 38,
                   child: ListView(
                     scrollDirection: Axis.horizontal,
-                    children: board.categories.keys
+                    children: [...board.categories.keys, 'Custom']
                         .map(
                           (name) => Padding(
                             padding: const EdgeInsets.only(right: 7),
@@ -338,24 +525,90 @@ class _MadhuraPostFormState extends State<MadhuraPostForm> {
                 ),
                 if (category == 'Custom') ...[
                   const SizedBox(height: 10),
-                  TextField(controller: customCategory, decoration: _decoration('Custom category')),
+                  TextField(
+                    controller: customCategory,
+                    decoration: _decoration('Custom category'),
+                  ),
                   const SizedBox(height: 10),
-                  TextField(controller: customSubcategory, decoration: _decoration('Custom sub-category · optional')),
+                  TextField(
+                    controller: customSubcategory,
+                    decoration: _decoration('Custom sub-category · optional'),
+                  ),
                 ] else ...[
                   const SizedBox(height: 10),
                   DropdownButtonFormField<String>(
-                  initialValue: focus,
-                  hint: Text('Any ${category.toLowerCase()}'),
-                  decoration: _decoration('Specific focus'),
-                  items: board.categories[category]!
-                      .map(
-                        (value) =>
-                            DropdownMenuItem(value: value, child: Text(value)),
-                      )
-                      .toList(),
-                  onChanged: (value) => setState(() => focus = value),
+                    initialValue: focus,
+                    hint: Text('Any ${category.toLowerCase()}'),
+                    decoration: _decoration('Specific focus'),
+                    items: board.categories[category]!
+                        .map(
+                          (value) => DropdownMenuItem(
+                            value: value,
+                            child: Text(value),
+                          ),
+                        )
+                        .toList(),
+                    onChanged: (value) => setState(() => focus = value),
                   ),
                 ],
+              ],
+            ),
+          ),
+          _FormCard(
+            'LEARNING AUDIENCE',
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Spoken language(s) used for the class',
+                  style: TextStyle(fontSize: 12, color: board.muted),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: spokenLanguageOptions
+                      .map(
+                        (language) => FilterChip(
+                          label: Text(language),
+                          selected: spokenLanguages.contains(language),
+                          selectedColor: board.gold,
+                          onSelected: (selected) => setState(() {
+                            if (selected) {
+                              spokenLanguages.add(language);
+                            } else {
+                              spokenLanguages.remove(language);
+                            }
+                          }),
+                        ),
+                      )
+                      .toList(),
+                ),
+                const SizedBox(height: 14),
+                const Text(
+                  'Suitable age groups · optional',
+                  style: TextStyle(fontSize: 12, color: board.muted),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: ageGroupOptions
+                      .map(
+                        (value) => FilterChip(
+                          label: Text(value),
+                          selected: ageGroups.contains(value),
+                          selectedColor: board.gold,
+                          onSelected: (selected) => setState(() {
+                            if (selected)
+                              ageGroups.add(value);
+                            else
+                              ageGroups.remove(value);
+                          }),
+                        ),
+                      )
+                      .toList(),
+                ),
               ],
             ),
           ),
@@ -388,8 +641,48 @@ class _MadhuraPostFormState extends State<MadhuraPostForm> {
               ],
             ),
           ),
-          _FormCard('COVER PHOTO · OPTIONAL', OutlinedButton.icon(onPressed: choosePhoto, icon: const Icon(Icons.photo_library_outlined), label: Text(selectedPhoto == null ? 'Upload photo' : 'Photo selected'))),
-          _FormCard('PREVIOUS CLASSES · OPTIONAL', TextField(controller: previousLinks, keyboardType: TextInputType.url, maxLines: 3, decoration: _decoration('YouTube or website links, one per line'))),
+          _FormCard(
+            'COVER PHOTO · OPTIONAL',
+            OutlinedButton.icon(
+              onPressed: choosePhoto,
+              icon: const Icon(Icons.photo_library_outlined),
+              label: Text(
+                selectedPhoto == null ? 'Upload photo' : 'Photo selected',
+              ),
+            ),
+          ),
+          _FormCard(
+            'PREVIOUS CLASSES · OPTIONAL',
+            TextField(
+              controller: previousLinks,
+              keyboardType: TextInputType.url,
+              maxLines: 3,
+              decoration: _decoration('YouTube or website links, one per line'),
+            ),
+          ),
+          _FormCard(
+            'CONTACT & SESSION ACCESS',
+            Column(
+              children: [
+                TextField(
+                  controller: contactNumber,
+                  keyboardType: TextInputType.phone,
+                  decoration: _decoration('Contact / WhatsApp number *'),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: sessionLink,
+                  keyboardType: TextInputType.url,
+                  decoration: _decoration('Session link (Zoom, Meet, etc.)'),
+                ),
+                const SizedBox(height: 7),
+                const Text(
+                  'These details are hidden from the class listing and shared after a learner expresses interest.',
+                  style: TextStyle(fontSize: 12, color: board.muted),
+                ),
+              ],
+            ),
+          ),
           _FormCard(
             'PRICING',
             Column(
@@ -428,31 +721,79 @@ class _MadhuraPostFormState extends State<MadhuraPostForm> {
           ),
           _FormCard(
             'SCHEDULE',
-            Column(children: [
-              OutlinedButton(onPressed: pickDate, child: Text(startDate == null ? 'Select start date' : '${startDate!.day}/${startDate!.month}/${startDate!.year}')),
-              const SizedBox(height: 8),
-              OutlinedButton(onPressed: () async { final time = await showTimePicker(context: context, initialTime: startTime ?? TimeOfDay.now()); if (time != null) setState(() => startTime = time); }, child: Text(startTime == null ? 'Select start time' : startTime!.format(context))),
-              const SizedBox(height: 8),
-              TextField(controller: durationDays, keyboardType: TextInputType.number, decoration: _decoration('Duration in number of days')),
-            ]),
-          ),          if (format != 'online')
+            Column(
+              children: [
+                OutlinedButton(
+                  onPressed: pickDate,
+                  child: Text(
+                    startDate == null
+                        ? 'Select start date'
+                        : 'Start: ${startDate!.day}/${startDate!.month}/${startDate!.year}',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton(
+                  onPressed: pickExpiryDate,
+                  child: Text(
+                    expiryDate == null
+                        ? 'Expiry date (defaults to start date)'
+                        : 'Expires: ${expiryDate!.day}/${expiryDate!.month}/${expiryDate!.year}',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton(
+                  onPressed: () async {
+                    final time = await showTimePicker(
+                      context: context,
+                      initialTime: startTime ?? TimeOfDay.now(),
+                    );
+                    if (time != null) setState(() => startTime = time);
+                  },
+                  child: Text(
+                    startTime == null
+                        ? 'Select start time'
+                        : startTime!.format(context),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: durationDays,
+                  keyboardType: TextInputType.number,
+                  decoration: _decoration('Duration in number of days'),
+                ),
+              ],
+            ),
+          ),
+          if (format != 'online')
             _FormCard(
               'LOCATION · OPTIONAL',
               Column(
                 children: [
                   DropdownButtonFormField<String>(
+                    key: ValueKey(city),
                     initialValue: city.isEmpty ? null : city,
-                    decoration: _decoration('City'),
-                    items: board.cities
-                        .map(
-                          (value) => DropdownMenuItem(
-                            value: value,
-                            child: Text(value),
-                          ),
-                        )
-                        .toList(),
-                    onChanged: (value) => setState(() => city = value ?? city),
+                    decoration: _decoration('City (optional)'),
+                    items: [
+                      ...board.cities.map(
+                        (value) =>
+                            DropdownMenuItem(value: value, child: Text(value)),
+                      ),
+                      const DropdownMenuItem(
+                        value: '_custom',
+                        child: Text('Other city…'),
+                      ),
+                    ],
+                    onChanged: (value) => setState(() => city = value ?? ''),
                   ),
+                  if (city == '_custom') ...[
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: customCity,
+                      textCapitalization: TextCapitalization.words,
+                      maxLength: 100,
+                      decoration: _decoration('Enter city name'),
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   OutlinedButton.icon(
                     onPressed: locating ? null : useCurrentLocation,

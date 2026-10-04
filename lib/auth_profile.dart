@@ -2,7 +2,9 @@ import 'dart:async';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+
 import 'firestore_database.dart';
+
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
@@ -10,7 +12,10 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'madhura_board.dart' as board;
+import 'madhura_detail.dart' show showMasterClassDetails;
 import 'madhura_post.dart';
+
+import 'package:url_launcher/url_launcher.dart';
 
 Future<bool> requireLogin(BuildContext context) async {
   var user = FirebaseAuth.instance.currentUser;
@@ -54,10 +59,18 @@ class _LoginPageState extends State<LoginPage> {
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
-      await FirebaseAuth.instance.signInWithCredential(credential);
-      if (mounted) {
-        Navigator.pop(context, true);
+      final signedIn = await FirebaseAuth.instance.signInWithCredential(
+        credential,
+      );
+      final profile = await firestore
+          .collection('profiles')
+          .doc(signedIn.user!.uid)
+          .get();
+      if (mounted && profile.data()?['registrationCompleted'] != true) {
+        await Navigator.of(context)
+            .push(MaterialPageRoute(builder: (_) => const RegistrationPage()));
       }
+      if (mounted) Navigator.pop(context, true);
     } on FirebaseAuthException catch (e) {
       if (mounted) {
         setState(
@@ -81,7 +94,7 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: board.cream,
+    backgroundColor: Colors.white,
     appBar: AppBar(
       backgroundColor: board.paper,
       foregroundColor: board.ink,
@@ -174,6 +187,161 @@ class _LoginPageState extends State<LoginPage> {
   );
 }
 
+class RegistrationPage extends StatefulWidget {
+  const RegistrationPage({super.key});
+  @override
+  State<RegistrationPage> createState() => _RegistrationPageState();
+}
+
+class _RegistrationPageState extends State<RegistrationPage> {
+  final phone = TextEditingController();
+  final city = TextEditingController();
+  final interests = <String>{};
+  bool saving = false;
+  String? error;
+  XFile? selectedPhoto;
+  User get user => FirebaseAuth.instance.currentUser!;
+
+  @override
+  void dispose() {
+    phone.dispose();
+    city.dispose();
+    super.dispose();
+  }
+
+  Future<void> choosePhoto() async {
+    try {
+      final photo = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1000,
+        imageQuality: 82,
+      );
+      if (photo != null && mounted) setState(() => selectedPhoto = photo);
+    } catch (e) {
+      if (mounted) setState(() => error = 'Could not open your photos: $e');
+    }
+  }
+
+  Future<String> _savePhotoIfSelected() async {
+    if (selectedPhoto == null) return user.photoURL ?? '';
+    final ref = FirebaseStorage.instance.ref().child(
+      'profile_photos/${user.uid}/avatar.jpg',
+    );
+    await ref.putFile(File(selectedPhoto!.path));
+    final url = await ref.getDownloadURL();
+    await user.updatePhotoURL(url);
+    return url;
+  }
+
+  Future<void> save() async {
+    if (phone.text.trim().length < 5 || city.text.trim().isEmpty) {
+      setState(() => error = 'Enter your phone number and city.');
+      return;
+    }
+    setState(() {
+      saving = true;
+      error = null;
+    });
+    try {
+      final photoUrl = await _savePhotoIfSelected();
+      await firestore.collection('profiles').doc(user.uid).set({
+        'name': user.displayName ?? '',
+        'email': user.email ?? '',
+        'pictureUrl': photoUrl,
+        // Firebase encrypts this private profile data in transit and at rest.
+        'phoneNumber': phone.text.trim(),
+        'city': city.text.trim(),
+        'preferredPhysicalCity': city.text.trim(),
+        'topicInterests': interests.toList(),
+        'registrationCompleted': true,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+      if (mounted) Navigator.pop(context);
+    } on FirebaseException catch (e) {
+      if (mounted) setState(() => error = e.message ?? e.code);
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: Colors.white,
+    appBar: AppBar(
+      backgroundColor: board.paper,
+      foregroundColor: board.ink,
+      title: const Text(
+        'Complete your profile',
+        style: TextStyle(fontFamily: 'serif'),
+      ),
+    ),
+    body: SafeArea(
+      child: ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          const Text(
+            'Welcome to Master Class',
+            style: TextStyle(
+              fontFamily: 'serif',
+              fontSize: 27,
+              color: board.ink,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Your Google name and photo are used automatically. Add the details below to personalise classes.',
+            style: TextStyle(color: board.muted, height: 1.4),
+          ),
+          const SizedBox(height: 20),
+          if ((user.photoURL ?? '').isEmpty || selectedPhoto != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: choosePhoto,
+                icon: const Icon(Icons.add_a_photo_outlined),
+                label: Text(
+                  selectedPhoto == null
+                      ? 'Add profile photo'
+                      : 'Photo selected',
+                ),
+              ),
+            ),
+          TextField(
+            controller: phone,
+            keyboardType: TextInputType.phone,
+            maxLength: 20,
+            decoration: const InputDecoration(
+              labelText: 'Phone number *',
+              helperText: 'Private to your profile.',
+            ),
+          ),
+          TextField(
+            controller: city,
+            textCapitalization: TextCapitalization.words,
+            maxLength: 100,
+            decoration: const InputDecoration(labelText: 'City *'),
+          ),
+          const SizedBox(height: 12),
+          if (error != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: Text(error!, style: const TextStyle(color: board.clay)),
+            ),
+          const SizedBox(height: 20),
+          FilledButton(
+            onPressed: saving ? null : save,
+            style: FilledButton.styleFrom(
+              backgroundColor: board.clay,
+              minimumSize: const Size.fromHeight(48),
+            ),
+            child: Text(saving ? 'Saving…' : 'Continue'),
+          ),
+        ],
+      ),
+    ),
+  );
+}
+
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
   @override
@@ -184,6 +352,7 @@ class _ProfilePageState extends State<ProfilePage> {
   final expertDetails = TextEditingController();
   bool loading = true;
   bool saving = false;
+  bool editing = false;
   String? error;
   XFile? selectedPhoto;
   User get user => FirebaseAuth.instance.currentUser!;
@@ -202,12 +371,8 @@ class _ProfilePageState extends State<ProfilePage> {
 
   Future<void> load() async {
     try {
-      final data =
-          (await firestore
-                  .collection('profiles')
-                  .doc(user.uid)
-                  .get())
-              .data();
+      final data = (await firestore.collection('profiles').doc(user.uid).get())
+          .data();
       expertDetails.text = (data?['expertDetails'] ?? '').toString();
     } catch (_) {
       // A profile document may not exist yet. The form remains usable.
@@ -232,22 +397,20 @@ class _ProfilePageState extends State<ProfilePage> {
       }
     }
   }
+
   void save() {
     setState(() {
       saving = true;
       error = null;
     });
     final profileRef = firestore.collection('profiles').doc(user.uid);
-    final write = profileRef.set(
-      {
-        'name': user.displayName ?? '',
-        'pictureUrl': user.photoURL ?? '',
-        'expertDetails': expertDetails.text.trim(),
-        'email': user.email,
-        'updatedAt': FieldValue.serverTimestamp(),
-      },
-      SetOptions(merge: true),
-    );
+    final write = profileRef.set({
+      'name': user.displayName ?? '',
+      'pictureUrl': user.photoURL ?? '',
+      'expertDetails': expertDetails.text.trim(),
+      'email': user.email,
+      'updatedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
     unawaited(
       write.catchError((Object e, StackTrace stackTrace) {
         debugPrint('Profile sync failed: $e\n$stackTrace');
@@ -259,52 +422,76 @@ class _ProfilePageState extends State<ProfilePage> {
     if (selectedPhoto != null) {
       unawaited(_uploadSelectedPhoto(selectedPhoto!));
     }
-    setState(() => saving = false);
+    setState(() {
+      saving = false;
+      editing = false;
+    });
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Profile saved. Syncing in the background.')),
+      const SnackBar(
+        content: Text('Profile saved. Syncing in the background.'),
+      ),
     );
   }
 
   Future<void> _uploadSelectedPhoto(XFile photo) async {
     try {
-      final photoRef = FirebaseStorage.instance
-          .ref()
-          .child('profile_photos/${user.uid}/avatar.jpg');
+      final photoRef = FirebaseStorage.instance.ref().child(
+        'profile_photos/${user.uid}/avatar.jpg',
+      );
       await photoRef.putFile(File(photo.path));
       final pictureUrl = await photoRef.getDownloadURL();
       await user.updatePhotoURL(pictureUrl);
-      await firestore.collection('profiles').doc(user.uid).set(
-        {
-          'pictureUrl': pictureUrl,
-          'updatedAt': FieldValue.serverTimestamp(),
-        },
-        SetOptions(merge: true),
-      );
+      await firestore.collection('profiles').doc(user.uid).set({
+        'pictureUrl': pictureUrl,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
       if (mounted) setState(() => selectedPhoto = null);
     } catch (e) {
       debugPrint('Profile photo upload failed: $e');
       if (mounted) {
         setState(
-          () => error = 'Profile details saved, but the photo could not upload.',
+          () =>
+              error = 'Profile details saved, but the photo could not upload.',
         );
       }
     }
   }
+
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: board.cream,
+    backgroundColor: Colors.white,
     appBar: AppBar(
       backgroundColor: board.paper,
       foregroundColor: board.ink,
       title: const Text('Your profile', style: TextStyle(fontFamily: 'serif')),
+      actions: [
+        TextButton.icon(
+          onPressed: saving
+              ? null
+              : () => setState(() {
+                  editing = !editing;
+                  error = null;
+                  if (!editing) selectedPhoto = null;
+                }),
+          icon: Icon(editing ? Icons.close : Icons.edit_outlined),
+          label: Text(editing ? 'Cancel' : 'Edit'),
+          style: TextButton.styleFrom(foregroundColor: board.clay),
+        ),
+        const SizedBox(width: 6),
+      ],
     ),
     body: loading
         ? const Center(child: CircularProgressIndicator())
         : ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              Center(
-                child: Column(
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: board.ink,
+                  borderRadius: BorderRadius.circular(22),
+                ),
+                child: Row(
                   children: [
                     _Avatar(
                       url: user.photoURL ?? '',
@@ -313,21 +500,57 @@ class _ProfilePageState extends State<ProfilePage> {
                           ? null
                           : File(selectedPhoto!.path),
                     ),
-                    if ((user.photoURL ?? '').trim().isEmpty && selectedPhoto == null)
-                      TextButton.icon(
-                        onPressed: choosePhoto,
-                        icon: const Icon(Icons.add_a_photo_outlined),
-                        label: const Text('Add profile photo'),
-                      )
-                    else
-                      TextButton.icon(
-                        onPressed: choosePhoto,
-                        icon: const Icon(Icons.edit_outlined),
-                        label: const Text('Change profile photo'),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'MASTER PROFILE',
+                            style: TextStyle(
+                              fontSize: 10,
+                              letterSpacing: 1.3,
+                              fontWeight: FontWeight.w700,
+                              color: board.gold,
+                            ),
+                          ),
+                          const SizedBox(height: 5),
+                          Text(
+                            user.displayName ?? 'Google account',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontFamily: 'serif',
+                              fontSize: 22,
+                              fontWeight: FontWeight.w700,
+                              color: board.paper,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            user.email ?? '',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFFDCCDBA),
+                            ),
+                          ),
+                        ],
                       ),
+                    ),
                   ],
                 ),
               ),
+              if (editing)
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: choosePhoto,
+                    icon: const Icon(Icons.add_a_photo_outlined),
+                    label: const Text('Update profile photo'),
+                  ),
+                ),
               const SizedBox(height: 18),
               Container(
                 padding: const EdgeInsets.all(16),
@@ -371,15 +594,37 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    const _ProfileLabel('EXPERT DETAILS · OPTIONAL'),
-                    TextField(
-                      controller: expertDetails,
-                      minLines: 3,
-                      maxLines: 5,
-                      decoration: _field(
-                        'Your skills, experience, and subjects you teach',
+                    const _ProfileLabel('EXPERT DETAILS'),
+                    if (editing)
+                      TextField(
+                        controller: expertDetails,
+                        minLines: 3,
+                        maxLines: 5,
+                        decoration: _field(
+                          'Your skills, experience, and subjects you teach',
+                        ),
+                      )
+                    else
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.all(14),
+                        decoration: BoxDecoration(
+                          color: board.cream,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: board.border),
+                        ),
+                        child: Text(
+                          expertDetails.text.trim().isEmpty
+                              ? 'Add your skills and teaching experience to introduce yourself to learners.'
+                              : expertDetails.text.trim(),
+                          style: TextStyle(
+                            height: 1.45,
+                            color: expertDetails.text.trim().isEmpty
+                                ? board.muted
+                                : board.ink,
+                          ),
+                        ),
                       ),
-                    ),
                     if (error != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 12),
@@ -388,38 +633,110 @@ class _ProfilePageState extends State<ProfilePage> {
                           style: const TextStyle(color: board.clay),
                         ),
                       ),
-                    const SizedBox(height: 20),
-                    FilledButton(
-                      onPressed: saving ? null : save,
-                      style: FilledButton.styleFrom(
-                        backgroundColor: board.clay,
-                        minimumSize: const Size.fromHeight(48),
+                    if (editing) ...[
+                      const SizedBox(height: 20),
+                      FilledButton.icon(
+                        onPressed: saving ? null : save,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: board.clay,
+                          minimumSize: const Size.fromHeight(48),
+                        ),
+                        icon: const Icon(Icons.save_outlined),
+                        label: Text(saving ? 'Saving…' : 'Save changes'),
                       ),
-                      child: Text(saving ? 'Saving…' : 'Save profile'),
-                    ),
+                    ],
                   ],
                 ),
               ),
               const SizedBox(height: 14),
-              const _ProfileLabel('MY POSTED CLASSES'),
+              const _ProfileLabel('MY POSTS'),
               StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: firestore.collection('listings').where('creatorId', isEqualTo: user.uid).snapshots(),
+                stream: firestore
+                    .collection('listings')
+                    .where('creatorId', isEqualTo: user.uid)
+                    .snapshots(),
                 builder: (context, snapshot) {
                   final classes = snapshot.data?.docs ?? [];
-                  if (classes.isEmpty) return const Text('No classes posted yet.', style: TextStyle(color: board.muted));
-                  return Column(children: classes.map((doc) => ListTile(
-                    tileColor: board.paper,
-                    title: Text((doc.data()['title'] ?? 'Untitled class').toString()),
-                    trailing: TextButton(
-                      child: const Text('Update'),
-                      onPressed: () => showModalBottomSheet<bool>(context: context, isScrollControlled: true, builder: (_) => FractionallySizedBox(heightFactor: .94, child: MadhuraPostForm(existing: doc.data(), listingId: doc.id))),
-                    ),
-                  )).toList());
+                  if (classes.isEmpty)
+                    return const Text(
+                      'No classes posted yet.',
+                      style: TextStyle(color: board.muted),
+                    );
+                  return Column(
+                    children: classes
+                        .map(
+                          (doc) => ListTile(
+                            tileColor: board.paper,
+                            title: Text(
+                              (doc.data()['title'] ?? 'Untitled class')
+                                  .toString(),
+                            ),
+                            onTap: () => showMasterClassDetails(context, {
+                              ...doc.data(),
+                              'id': doc.id,
+                            }),
+                            trailing: TextButton(
+                              child: const Text('Update'),
+                              onPressed: () => showModalBottomSheet<bool>(
+                                context: context,
+                                isScrollControlled: true,
+                                builder: (_) => FractionallySizedBox(
+                                  heightFactor: .94,
+                                  child: MasterClassPostForm(
+                                    existing: doc.data(),
+                                    listingId: doc.id,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  );
                 },
               ),
-              const SizedBox(height: 14),              OutlinedButton.icon(
+              const SizedBox(height: 18),
+              const _ProfileLabel('MY INTERESTED CLASSES'),
+              StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+                stream: firestore
+                    .collectionGroup('interests')
+                    .where('userId', isEqualTo: user.uid)
+                    .snapshots(),
+                builder: (context, snapshot) {
+                  final interests =
+                      snapshot.data?.docs
+                          .where((doc) => doc.data()['status'] == 'interested')
+                          .toList() ??
+                      [];
+                  if (interests.isEmpty)
+                    return const Text(
+                      'No class interests yet.',
+                      style: TextStyle(color: board.muted),
+                    );
+                  return Column(
+                    children: interests
+                        .map(
+                          (doc) => ListTile(
+                            tileColor: board.paper,
+                            title: Text(
+                              (doc.data()['listingTitle'] ?? 'Interested class')
+                                  .toString(),
+                            ),
+                            subtitle: _InterestSessionAccess(
+                              listingId: (doc.data()['listingId'] ?? '')
+                                  .toString(),
+                            ),
+                          ),
+                        )
+                        .toList(),
+                  );
+                },
+              ),
+              const SizedBox(height: 14),
+              OutlinedButton.icon(
                 onPressed: () async {
                   await FirebaseAuth.instance.signOut();
+                  await _googleSignIn.signOut();
                   if (mounted)
                     Navigator.of(context).popUntil((route) => route.isFirst);
                 },
@@ -485,3 +802,46 @@ InputDecoration _field(String hint) => InputDecoration(
     borderSide: const BorderSide(color: board.border),
   ),
 );
+
+class _InterestSessionAccess extends StatelessWidget {
+  const _InterestSessionAccess({required this.listingId});
+  final String listingId;
+
+  Future<void> _openSession(BuildContext context, String link) async {
+    final uri = Uri.tryParse(link);
+    if (uri == null ||
+        !await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (context.mounted)
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open the session link.')),
+        );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+        future: listingId.isEmpty
+            ? null
+            : firestore.collection('listings_contact').doc(listingId).get(),
+        builder: (context, snapshot) {
+          final data = snapshot.data?.data();
+          if (data == null)
+            return const Text('Private session details are not available yet.');
+          final contact = (data['contactNumber'] ?? '').toString();
+          final session = (data['sessionLink'] ?? '').toString();
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (contact.isNotEmpty) Text('Owner contact: $contact'),
+              if (session.isNotEmpty)
+                TextButton.icon(
+                  onPressed: () => _openSession(context, session),
+                  icon: const Icon(Icons.open_in_new, size: 16),
+                  label: const Text('Open session link'),
+                ),
+            ],
+          );
+        },
+      );
+}

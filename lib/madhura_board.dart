@@ -1,11 +1,18 @@
+import 'dart:async';
 import 'dart:convert';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
 import 'firestore_database.dart';
+
 import 'package:flutter/material.dart';
 
 import 'master_class_app.dart' show showPostSheet;
-import 'madhura_detail.dart' show showMadhuraDetails;
+import 'madhura_detail.dart' show showMasterClassDetails;
 import 'auth_profile.dart' show requireLogin, openProfile;
+import 'community_posts.dart'
+    show CommunityActivity, CommunityDetailPage, openCommunityPost;
 
 const cream = Color(0xFFF7F1E6),
     paper = Color(0xFFFFFCF6),
@@ -13,7 +20,9 @@ const cream = Color(0xFFF7F1E6),
     muted = Color(0xFF806F61),
     border = Color(0xFFE6D8C8),
     clay = Color(0xFFB9654A),
-    gold = Color(0xFFE8AD42);
+    gold = Color(0xFFE8AD42),
+    mildBlue = Color(0xFFDDF3F2),
+    mildBlueInk = Color(0xFF0B6B73);
 const categories = <String, List<String>>{
   'Music': [
     'Flute',
@@ -46,6 +55,41 @@ const categories = <String, List<String>>{
     'Konkani',
     'English',
   ],
+  'Yoga': [
+    'Hatha Yoga',
+    'Vinyasa Yoga',
+    'Pranayama',
+    'Yoga for beginners',
+    'Yoga therapy',
+  ],
+  'Meditation': [
+    'Mindfulness meditation',
+    'Guided meditation',
+    'Breath meditation',
+    'Stress relief',
+    'Sound meditation',
+  ],
+  'Bhagavat Geeta': [
+    'Introduction',
+    'Chapter-wise study',
+    'Bhakti Yoga',
+    'Karma Yoga',
+    'Jnana Yoga',
+  ],
+  'Workshop': [
+    'Creative workshop',
+    'Career workshop',
+    'Skill-building workshop',
+    'Weekend workshop',
+  ],
+  'Arts': [
+    'Drawing',
+    'Painting',
+    'Crafts',
+    'Photography',
+    'Theatre',
+    'Calligraphy',
+  ],
   'Foreign Languages': [
     'French',
     'German',
@@ -57,7 +101,8 @@ const categories = <String, List<String>>{
     'Arabic',
     'Russian',
     'Portuguese',
-  ],  'Curriculum': [
+  ],
+  'Curriculum': [
     'CBSE',
     'ICSE',
     'State Board',
@@ -87,7 +132,13 @@ const categories = <String, List<String>>{
 const categoryIds = <String, String>{
   'Music': 'music',
   'Language': 'language',
-  'Foreign Languages': 'foreign_languages',  'Curriculum': 'curriculum',
+  'Foreign Languages': 'foreign_languages',
+  'Yoga': 'yoga',
+  'Meditation': 'meditation',
+  'Bhagavat Geeta': 'bhagavat_geeta',
+  'Workshop': 'workshop',
+  'Arts': 'arts',
+  'Curriculum': 'curriculum',
   'Trading / Stock': 'trading',
   'Custom': 'custom',
   'AI Tools': 'ai_tools',
@@ -111,45 +162,227 @@ const formats = <String, String>{
   'physical': 'Physical class',
   'online': 'Online class',
   'competition': 'Competition',
+  'class_request': 'Class request',
+  'demo_poll': 'Demo vote',
 };
 
 String listingFormat(Map<String, dynamic> data) =>
-    switch ((data['listing_type'] ?? data['type'] ?? '').toString()) {
-      'offline_class' => 'physical',
-      'online_class' => 'online',
-      final value => value,
-    };
+    data['listing_kind'] == 'class_request'
+    ? 'class_request'
+    : data['listing_kind'] == 'demo_poll'
+    ? 'demo_poll'
+    : switch ((data['listing_type'] ?? data['type'] ?? '').toString()) {
+        'offline_class' => 'physical',
+        'online_class' => 'online',
+        final value => value,
+      };
 String listingPrice(Map<String, dynamic> data) =>
-    data['is_free'] == true ||
-        data['priceType'] == 'free' ||
-        data['price'] == null
+    data['listing_kind'] == 'class_request'
+    ? 'Interest'
+    : data['listing_kind'] == 'demo_poll'
+    ? 'Vote'
+    : data['is_free'] == true ||
+          data['priceType'] == 'free' ||
+          data['price'] == null
     ? 'Free'
     : '₹${data['price']}';
 
-class MadhuraBoard extends StatefulWidget {
-  const MadhuraBoard({super.key});
-  @override
-  State<MadhuraBoard> createState() => _MadhuraBoardState();
+bool isActiveCommunityListing(Map<String, dynamic> data) {
+  if (data['requestClosed'] == true) return false;
+  final expiry = data['expires_at'];
+  return expiry is! Timestamp || expiry.toDate().isAfter(DateTime.now());
 }
 
-class _MadhuraBoardState extends State<MadhuraBoard> {
+class MasterClassBoard extends StatefulWidget {
+  const MasterClassBoard({super.key});
+  @override
+  State<MasterClassBoard> createState() => _MasterClassBoardState();
+}
+
+class _MasterClassBoardState extends State<MasterClassBoard> {
   final search = TextEditingController();
   String? category, focus;
-  String city = 'Bangalore';
-  final selectedFormats = <String>{};
+  String city = '';
+  String savedPhysicalCity = 'Bangalore';
+  final selectedFormats = <String>{'online'};
+  final _formatScrollController = ScrollController();
+  final _categoryScrollController = ScrollController();
+  Timer? _filterScrollTimer;
+  bool _formatScrollForward = true;
+  bool _categoryScrollForward = true;
+  static const _pageSize = 30;
+  final _listingDocs = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
+  DocumentSnapshot<Map<String, dynamic>>? _lastListing;
+  DocumentSnapshot<Map<String, dynamic>>? _lastLegacyListing;
+  bool _loadingListings = false;
+  bool _loadingMore = false;
+  bool _hasMoreListings = true;
+  String? _listingError;
+  @override
+  void initState() {
+    super.initState();
+    _loadPreferredCity();
+    _loadListings(reset: true);
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => _startFilterAutoScroll(),
+    );
+  }
+
+  void _startFilterAutoScroll() {
+    _filterScrollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      _bounceScroll(_formatScrollController, isFormat: true);
+      _bounceScroll(_categoryScrollController, isFormat: false);
+    });
+  }
+
+  void _bounceScroll(ScrollController controller, {required bool isFormat}) {
+    if (!mounted || !controller.hasClients) return;
+    final position = controller.position;
+    if (position.maxScrollExtent <= 0) return;
+    final forward = isFormat ? _formatScrollForward : _categoryScrollForward;
+    final target = forward
+        ? position.maxScrollExtent
+        : position.minScrollExtent;
+    controller.animateTo(
+      target,
+      duration: const Duration(milliseconds: 850),
+      curve: Curves.easeInOut,
+    );
+    if (isFormat) {
+      _formatScrollForward = !forward;
+    } else {
+      _categoryScrollForward = !forward;
+    }
+  }
+
+  Future<void> _loadPreferredCity() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      final data = (await firestore.collection('profiles').doc(user.uid).get())
+          .data();
+      final value = (data?['preferredPhysicalCity'] ?? data?['city'] ?? '')
+          .toString()
+          .trim();
+      if (value.isNotEmpty && mounted) {
+        setState(() {
+          savedPhysicalCity = value;
+          if (selectedFormats.contains('physical') ||
+              selectedFormats.contains('competition'))
+            city = value;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _rememberPhysicalCity(String value) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || value.isEmpty) return;
+    setState(() => savedPhysicalCity = value);
+    try {
+      await firestore.collection('profiles').doc(user.uid).set({
+        'preferredPhysicalCity': value,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (_) {}
+  }
+
+  Future<void> _loadListings({bool reset = false}) async {
+    if (_loadingListings || _loadingMore || (!reset && !_hasMoreListings))
+      return;
+    setState(() {
+      if (reset) {
+        _loadingListings = true;
+        _listingDocs.clear();
+        _lastListing = null;
+        _lastLegacyListing = null;
+        _hasMoreListings = true;
+      } else {
+        _loadingMore = true;
+      }
+      _listingError = null;
+    });
+    try {
+      Query<Map<String, dynamic>> activeQuery = firestore
+          .collection('listings')
+          .where('expires_at', isGreaterThan: Timestamp.now())
+          .orderBy('expires_at')
+          .limit(_pageSize);
+      if (_lastListing != null) {
+        activeQuery = activeQuery.startAfterDocument(_lastListing!);
+      }
+      Query<Map<String, dynamic>> legacyQuery = firestore
+          .collection('listings')
+          .orderBy('updatedAt', descending: true)
+          .limit(_pageSize);
+      if (_lastLegacyListing != null) {
+        legacyQuery = legacyQuery.startAfterDocument(_lastLegacyListing!);
+      }
+      final pages = await Future.wait([activeQuery.get(), legacyQuery.get()]);
+      final activePage = pages[0];
+      final legacyPage = pages[1];
+      if (!mounted) return;
+      setState(() {
+        _listingDocs.addAll(activePage.docs);
+        _listingDocs.addAll(
+          legacyPage.docs.where((doc) => doc.data()['expires_at'] == null),
+        );
+        if (activePage.docs.isNotEmpty) _lastListing = activePage.docs.last;
+        if (legacyPage.docs.isNotEmpty) {
+          _lastLegacyListing = legacyPage.docs.last;
+        }
+        _hasMoreListings =
+            activePage.docs.length == _pageSize ||
+            legacyPage.docs.length == _pageSize;
+      });
+    } on FirebaseException catch (e) {
+      if (mounted) setState(() => _listingError = e.message ?? e.code);
+    } finally {
+      if (mounted)
+        setState(() {
+          _loadingListings = false;
+          _loadingMore = false;
+        });
+    }
+  }
+
   @override
   void dispose() {
+    _filterScrollTimer?.cancel();
+    _formatScrollController.dispose();
+    _categoryScrollController.dispose();
     search.dispose();
     super.dispose();
+  }
+
+  bool isExpired(Map<String, dynamic> data) {
+    final expiresAt = data['expires_at'];
+    if (expiresAt is Timestamp)
+      return !expiresAt.toDate().isAfter(DateTime.now());
+    final dateText = (data['expiry_date'] ?? data['start_date'] ?? '')
+        .toString();
+    final date = DateTime.tryParse(dateText);
+    if (date == null) return false;
+    return !DateTime(
+      date.year,
+      date.month,
+      date.day,
+      23,
+      59,
+      59,
+    ).isAfter(DateTime.now());
   }
 
   bool matches(Map<String, dynamic> d) {
     final listedCategory = (d['category'] ?? '').toString();
     final listedFocus = (d['subcategory'] ?? '').toString();
     final words =
-        '${d['title'] ?? ''} ${d['description'] ?? ''} ${d['topic'] ?? ''} ${d['about_master'] ?? ''} $listedCategory $listedFocus'
+        '${d['title'] ?? ''} ${d['description'] ?? ''} ${d['topic'] ?? ''} ${d['about_master'] ?? ''} ${d['spoken_languages'] ?? ''} ${d['age_group'] ?? ''} $listedCategory $listedFocus ${formats[listingFormat(d)] ?? ''}'
             .toLowerCase();
-    if (category != null && listedCategory.toLowerCase() != (categoryIds[category] ?? category!).toLowerCase() && listedCategory.toLowerCase() != category!.toLowerCase()) {
+    if (category != null &&
+        listedCategory.toLowerCase() !=
+            (categoryIds[category] ?? category!).toLowerCase() &&
+        listedCategory.toLowerCase() != category!.toLowerCase()) {
       if (listedCategory.isNotEmpty ||
           !(categories[category]?.any((s) => words.contains(s.toLowerCase())) ??
               false))
@@ -160,10 +393,11 @@ class _MadhuraBoardState extends State<MadhuraBoard> {
         !words.contains(focus!.toLowerCase()))
       return false;
     final format = listingFormat(d);
-    if (selectedFormats.isNotEmpty && !selectedFormats.contains(format))
-      return false;
+    if (format == 'class_request') return false;
+    if (!selectedFormats.contains(format)) return false;
     final place = (d['city'] ?? '').toString();
-    if (format != 'online' &&
+    if (city.isNotEmpty &&
+        format != 'online' &&
         place.isNotEmpty &&
         place.toLowerCase() != city.toLowerCase())
       return false;
@@ -171,6 +405,149 @@ class _MadhuraBoardState extends State<MadhuraBoard> {
     return query.isEmpty || words.contains(query);
   }
 
+  Widget _buildListingFeed() {
+    final listings = _listingDocs
+        .where((doc) => !isExpired(doc.data()) && matches(doc.data()))
+        .toList();
+    return RefreshIndicator(
+      onRefresh: () => _loadListings(reset: true),
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.fromLTRB(16, 18, 16, 25),
+        children: [
+          Text(
+            category == null ? 'Learn from master near you' : category!,
+            style: const TextStyle(
+              fontFamily: 'serif',
+              fontSize: 19,
+              height: 1.08,
+              fontWeight: FontWeight.w700,
+              color: ink,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            _loadingListings
+                ? 'Loading the board…'
+                : '${listings.length} matching class${listings.length == 1 ? '' : 'es'} loaded',
+            style: const TextStyle(fontSize: 12, color: muted),
+          ),
+          const SizedBox(height: 14),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              onPressed:
+                  selectedFormats.length == 1 &&
+                      selectedFormats.contains('online')
+                  ? null
+                  : openCityPicker,
+              icon: const Icon(
+                Icons.location_on_outlined,
+                color: clay,
+                size: 16,
+              ),
+              label: Text(city.isEmpty ? 'All cities' : city),
+              style: _filterStyle,
+            ),
+          ),
+          const SizedBox(height: 16),
+          if (_listingError != null)
+            _Notice(
+              'Could not load classes',
+              _listingError!,
+              onPost: () => _loadListings(reset: true),
+            )
+          else if (_loadingListings)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(48),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else if (listings.isEmpty)
+            _Notice(
+              'Nothing here yet',
+              'Try a different filter, refresh the board, or be the first to post for this focus.',
+              onPost: () => openPost(context),
+            )
+          else
+            ...listings.map((doc) => _Card({...doc.data(), 'id': doc.id})),
+          if (!_loadingListings && _hasMoreListings) ...[
+            const SizedBox(height: 4),
+            OutlinedButton(
+              onPressed: _loadingMore ? null : _loadListings,
+              child: _loadingMore
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('Load more classes'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  void _selectFormats(Set<String> values) {
+    _loadPreferredCity();
+    setState(() {
+      selectedFormats
+        ..clear()
+        ..addAll(values);
+      if (values.length == 1 && values.contains('online')) {
+        city = '';
+      } else if (values.contains('physical') ||
+          values.contains('competition')) {
+        city = savedPhysicalCity;
+      } else {
+        city = '';
+      }
+      focus = null;
+    });
+  }
+
+  void openCityPicker() => showModalBottomSheet(
+    context: context,
+    backgroundColor: Colors.white,
+    builder: (sheetContext) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Wrap(
+          runSpacing: 8,
+          children: [
+            const _Label('CITY'),
+            Wrap(
+              spacing: 7,
+              runSpacing: 7,
+              children: ['All cities', ...cities]
+                  .map(
+                    (name) => ChoiceChip(
+                      label: Text(name),
+                      selected: name == 'All cities'
+                          ? city.isEmpty
+                          : city == name,
+                      onSelected: (_) async {
+                        final value = name == 'All cities' ? '' : name;
+                        setState(() => city = value);
+                        if (selectedFormats.contains('physical') ||
+                            selectedFormats.contains('competition')) {
+                          await _rememberPhysicalCity(value);
+                        }
+                        if (sheetContext.mounted) Navigator.pop(sheetContext);
+                      },
+                    ),
+                  )
+                  .toList(),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
   void openFilters() => showModalBottomSheet(
     context: context,
     isScrollControlled: true,
@@ -228,32 +605,64 @@ class _MadhuraBoardState extends State<MadhuraBoard> {
                           activeColor: clay,
                           controlAffinity: ListTileControlAffinity.leading,
                           onChanged: (_) => update(() {
-                            if (!selectedFormats.add(entry.key))
-                              selectedFormats.remove(entry.key);
+                            if (selectedFormats.contains(entry.key)) {
+                              if (selectedFormats.length > 1) {
+                                selectedFormats.remove(entry.key);
+                              }
+                            } else {
+                              selectedFormats.add(entry.key);
+                            }
                           }),
                         ),
                       ),
                       const SizedBox(height: 16),
                       const _Label('CITY'),
                       const SizedBox(height: 8),
-                      Wrap(
-                        spacing: 6,
-                        runSpacing: 6,
-                        children: cities
-                            .map(
-                              (value) => ChoiceChip(
+                      Builder(
+                        builder: (context) {
+                          final options = <String, String>{
+                            for (final name in cities) name.toLowerCase(): name,
+                          };
+                          for (final doc in _listingDocs) {
+                            final name = (doc.data()['city'] ?? '')
+                                .toString()
+                                .trim();
+                            if (name.isNotEmpty) {
+                              options.putIfAbsent(
+                                name.toLowerCase(),
+                                () => name,
+                              );
+                            }
+                          }
+                          final cityNames = options.values.toList()
+                            ..sort(
+                              (a, b) =>
+                                  a.toLowerCase().compareTo(b.toLowerCase()),
+                            );
+                          return Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: ['All cities', ...cityNames].map((value) {
+                              final selected = value == 'All cities'
+                                  ? city.isEmpty
+                                  : city.toLowerCase() == value.toLowerCase();
+                              return ChoiceChip(
                                 label: Text(value),
-                                selected: city == value,
+                                selected: selected,
                                 selectedColor: ink,
-                                backgroundColor: cream,
+                                backgroundColor: Colors.white,
                                 labelStyle: TextStyle(
-                                  color: city == value ? paper : ink,
+                                  color: selected ? paper : ink,
                                   fontSize: 12,
                                 ),
-                                onSelected: (_) => update(() => city = value),
-                              ),
-                            )
-                            .toList(),
+                                onSelected: (_) => update(
+                                  () =>
+                                      city = value == 'All cities' ? '' : value,
+                                ),
+                              );
+                            }).toList(),
+                          );
+                        },
                       ),
                       if (category != null) ...[
                         const SizedBox(height: 18),
@@ -268,7 +677,7 @@ class _MadhuraBoardState extends State<MadhuraBoard> {
                                   label: Text(value),
                                   selected: focus == value,
                                   selectedColor: gold,
-                                  backgroundColor: cream,
+                                  backgroundColor: Colors.white,
                                   onSelected: (_) => update(
                                     () => focus = focus == value ? null : value,
                                   ),
@@ -286,11 +695,13 @@ class _MadhuraBoardState extends State<MadhuraBoard> {
                     Expanded(
                       child: OutlinedButton(
                         onPressed: () => update(() {
-                          selectedFormats.clear();
+                          selectedFormats
+                            ..clear()
+                            ..add('online');
                           focus = null;
-                          city = 'Bangalore';
+                          city = '';
                         }),
-                        child: const Text('Show everything'),
+                        child: const Text('Reset filters'),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -312,7 +723,7 @@ class _MadhuraBoardState extends State<MadhuraBoard> {
   );
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: cream,
+    backgroundColor: Colors.white,
     body: SafeArea(
       child: Column(
         children: [
@@ -341,36 +752,53 @@ class _MadhuraBoardState extends State<MadhuraBoard> {
                       ),
                     ),
                     const SizedBox(width: 9),
-                    const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Master Class',
-                          style: TextStyle(
-                            fontFamily: 'serif',
-                            fontSize: 19,
-                            fontWeight: FontWeight.w700,
-                            color: ink,
+                    const Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Master Class',
+                            style: TextStyle(
+                              fontFamily: 'serif',
+                              fontSize: 19,
+                              fontWeight: FontWeight.w700,
+                              color: ink,
+                            ),
                           ),
-                        ),
-                        Text(
-                          'MASTERCLASS BOARD',
+                          Text(
+                            'MASTER CLASS',
+                            style: TextStyle(
+                              fontSize: 9,
+                              letterSpacing: 1.1,
+                              color: muted,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        const Text(
+                          'WELCOME',
                           style: TextStyle(
                             fontSize: 9,
                             letterSpacing: 1.1,
                             color: muted,
                           ),
                         ),
+                        Text(
+                          FirebaseAuth.instance.currentUser?.displayName ??
+                              'Guest',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w700,
+                            color: ink,
+                          ),
+                        ),
                       ],
-                    ),
-                    const Spacer(),
-                    TextButton(
-                      onPressed: () => openProfile(context),
-                      style: TextButton.styleFrom(
-                        backgroundColor: ink,
-                        foregroundColor: paper,
-                      ),
-                      child: const Text('Profile'),
                     ),
                   ],
                 ),
@@ -412,139 +840,115 @@ class _MadhuraBoardState extends State<MadhuraBoard> {
             ),
           ),
           Container(
-            height: 54,
+            height: 48,
             decoration: const BoxDecoration(
-              border: Border.symmetric(horizontal: BorderSide(color: border)),
+              gradient: LinearGradient(
+                colors: [Color(0xFFFFF5C9), Color(0xFFFFFBEB)],
+              ),
             ),
-            child: ListView(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 9),
-              children: [
-                _Chip(
-                  'All',
-                  category == null,
-                  () => setState(() {
-                    category = null;
-                    focus = null;
-                  }),
+            child: SizedBox(
+              height: 48,
+              child: ListView(
+                controller: _formatScrollController,
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 7,
                 ),
-                ...categories.keys.map(
-                  (name) => _Chip(
-                    name,
-                    category == name,
-                    () => setState(() {
-                      category = name;
-                      focus = null;
-                    }),
+                children: [
+                  _Chip(
+                    'Online',
+                    selectedFormats.length == 1 &&
+                        selectedFormats.contains('online'),
+                    () => _selectFormats({'online'}),
+                    activeColor: const Color(0xFFF4B183),
+                    activeTextColor: const Color(0xFF5D341A),
                   ),
-                ),
-              ],
+                  _Chip(
+                    'Physical',
+                    selectedFormats.length == 1 &&
+                        selectedFormats.contains('physical'),
+                    () => _selectFormats({'physical'}),
+                    activeColor: const Color(0xFFF4B183),
+                    activeTextColor: const Color(0xFF5D341A),
+                  ),
+                  _Chip(
+                    'Demo',
+                    selectedFormats.length == 1 &&
+                        selectedFormats.contains('demo_poll'),
+                    () => _selectFormats({'demo_poll'}),
+                    activeColor: const Color(0xFFF4B183),
+                    activeTextColor: const Color(0xFF5D341A),
+                  ),
+                  _Chip(
+                    'Competition',
+                    selectedFormats.length == 1 &&
+                        selectedFormats.contains('competition'),
+                    () => _selectFormats({'competition'}),
+                    activeColor: const Color(0xFFF4B183),
+                    activeTextColor: const Color(0xFF5D341A),
+                  ),
+                ],
+              ),
             ),
           ),
-          Expanded(
-            child: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-              stream: firestore
-                  .collection('listings')
-                  .snapshots(),
-              builder: (context, snapshot) {
-                final listings = (snapshot.data?.docs ?? [])
-                    .where((doc) => matches(doc.data()))
-                    .toList();
-                return ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 18, 16, 25),
-                  children: [
-                    Text(
-                      category == null
-                          ? 'Learn from a master near you'
-                          : category!,
-                      style: const TextStyle(
-                        fontFamily: 'serif',
-                        fontSize: 27,
-                        height: 1.08,
-                        fontWeight: FontWeight.w700,
-                        color: ink,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      snapshot.connectionState == ConnectionState.waiting
-                          ? 'Loading the board…'
-                          : '${listings.length} class${listings.length == 1 ? '' : 'es'} in $city and online',
-                      style: const TextStyle(fontSize: 12, color: muted),
-                    ),
-                    const SizedBox(height: 14),
-                    Wrap(
-                      spacing: 8,
-                      children: [
-                        OutlinedButton.icon(
-                          onPressed: openFilters,
-                          icon: const Icon(Icons.tune, size: 16),
-                          label: Text(
-                            selectedFormats.isEmpty && focus == null
-                                ? 'Filters'
-                                : 'Filters ${selectedFormats.length + (focus == null ? 0 : 1)}',
-                          ),
-                          style: _filterStyle,
-                        ),
-                        OutlinedButton.icon(
-                          onPressed: openFilters,
-                          icon: const Icon(
-                            Icons.location_on_outlined,
-                            color: clay,
-                            size: 16,
-                          ),
-                          label: Text(city),
-                          style: _filterStyle,
-                        ),
-                      ],
-                    ),
-                    if (category != null) ...[
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        height: 34,
-                        child: ListView(
-                          scrollDirection: Axis.horizontal,
-                          children: categories[category]!
-                              .map(
-                                (value) => _Chip(
-                                  value,
-                                  focus == value,
-                                  () => setState(
-                                    () => focus = focus == value ? null : value,
-                                  ),
-                                ),
-                              )
-                              .toList(),
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 16),
-                    if (snapshot.hasError)
-                      const _Notice(
-                        'Could not load classes',
-                        'Check your connection and try again.',
-                      )
-                    else if (snapshot.connectionState ==
-                        ConnectionState.waiting)
-                      const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(48),
-                          child: CircularProgressIndicator(),
+          Container(
+            height: 140,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0xFFFFF1B8), Color(0xFFFFF9E4)],
+              ),
+              border: Border.symmetric(horizontal: BorderSide(color: border)),
+            ),
+            child: ListView.builder(
+              controller: _categoryScrollController,
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+              itemCount: ((categories.length + 1) / 2).ceil(),
+              itemBuilder: (context, column) {
+                final items = [
+                  'All',
+                  ...categories.keys,
+                ].skip(column * 2).take(2).toList();
+                return Column(
+                  children: items
+                      .map(
+                        (name) => _CategoryIcon(
+                          name: name,
+                          active: name == 'All'
+                              ? category == null
+                              : category == name,
+                          onTap: () => setState(() {
+                            category = name == 'All' ? null : name;
+                            focus = null;
+                          }),
                         ),
                       )
-                    else if (listings.isEmpty)
-                      _Notice(
-                        'Nothing here yet',
-                        'Try a different filter, or be the first to post for this focus.',
-                        onPost: () => openPost(context),
-                      )
-                    else
-                      ...listings.map((doc) => _Card(doc.data())),
-                  ],
+                      .toList(),
                 );
               },
             ),
           ),
+          if (category != null)
+            SizedBox(
+              height: 40,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.fromLTRB(12, 4, 12, 2),
+                children: categories[category]!
+                    .map(
+                      (value) => _Chip(
+                        value,
+                        focus == value,
+                        () => setState(
+                          () => focus = focus == value ? null : value,
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+          Expanded(child: _buildListingFeed()),
         ],
       ),
     ),
@@ -560,6 +964,12 @@ class _MadhuraBoardState extends State<MadhuraBoard> {
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
             const _Tab(Icons.home_outlined, 'Board', true),
+            _ListingCountTab(
+              icon: Icons.volunteer_activism_outlined,
+              label: 'Requests',
+              kind: 'class_request',
+              onTap: () => openRequests(context),
+            ),
             IconButton.filled(
               onPressed: () => openPost(context),
               icon: const Icon(Icons.add),
@@ -567,6 +977,12 @@ class _MadhuraBoardState extends State<MadhuraBoard> {
                 backgroundColor: clay,
                 foregroundColor: paper,
               ),
+            ),
+            _ListingCountTab(
+              icon: Icons.how_to_vote_outlined,
+              label: 'Demos',
+              kind: 'demo_poll',
+              onTap: () => openDemoClasses(context),
             ),
             _Tab(
               Icons.person_outline,
@@ -581,20 +997,197 @@ class _MadhuraBoardState extends State<MadhuraBoard> {
   );
 }
 
+Future<void> openRequests(BuildContext context) async {
+  await Navigator.of(context)
+      .push(MaterialPageRoute(builder: (_) => const _RequestsPage()));
+}
+
+class _RequestsPage extends StatelessWidget {
+  const _RequestsPage();
+  @override
+  Widget build(BuildContext context) => DefaultTabController(
+    length: 2,
+    child: Scaffold(
+      backgroundColor: Colors.white,
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        foregroundColor: ink,
+        title: const Text(
+          'Class requests',
+          style: TextStyle(fontFamily: 'serif'),
+        ),
+        bottom: const TabBar(
+          tabs: [
+            Tab(text: 'Online'),
+            Tab(text: 'Physical'),
+          ],
+        ),
+      ),
+      body: const TabBarView(
+        children: [
+          _RequestFeed(mode: 'online'),
+          _RequestFeed(mode: 'physical'),
+        ],
+      ),
+    ),
+  );
+}
+
+class _RequestFeed extends StatelessWidget {
+  const _RequestFeed({required this.mode});
+  final String mode;
+  @override
+  Widget build(BuildContext context) =>
+      StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: firestore
+            .collection('listings')
+            .where('listing_kind', isEqualTo: 'class_request')
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError)
+            return const Center(child: Text('Could not load requests.'));
+          if (!snapshot.hasData)
+            return const Center(child: CircularProgressIndicator());
+          final requests = snapshot.data!.docs
+              .where(
+                (doc) =>
+                    (doc.data()['request_mode'] ?? 'online') == mode &&
+                    isActiveCommunityListing(doc.data()),
+              )
+              .toList();
+          if (requests.isEmpty)
+            return Center(
+              child: Text(
+                'No $mode class requests yet.',
+                style: const TextStyle(color: muted),
+              ),
+            );
+          return ListView.builder(
+            padding: const EdgeInsets.all(16),
+            itemCount: requests.length,
+            itemBuilder: (context, index) {
+              final doc = requests[index];
+              return _Card({...doc.data(), 'id': doc.id});
+            },
+          );
+        },
+      );
+}
+
+Future<void> openDemoClasses(BuildContext context) async {
+  await Navigator.of(context)
+      .push(MaterialPageRoute(builder: (_) => const _DemoClassesPage()));
+}
+
+class _DemoClassesPage extends StatelessWidget {
+  const _DemoClassesPage();
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    backgroundColor: Colors.white,
+    appBar: AppBar(
+      backgroundColor: Colors.white,
+      foregroundColor: ink,
+      title: const Text('Demo classes', style: TextStyle(fontFamily: 'serif')),
+      actions: [
+        TextButton.icon(
+          onPressed: () => openCommunityPost(context, 'demo_poll'),
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('Post'),
+          style: TextButton.styleFrom(foregroundColor: clay),
+        ),
+      ],
+    ),
+    body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: firestore
+          .collection('listings')
+          .where('listing_kind', isEqualTo: 'demo_poll')
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.hasError)
+          return const Center(child: Text('Could not load demo classes.'));
+        if (!snapshot.hasData)
+          return const Center(child: CircularProgressIndicator());
+        final demos = snapshot.data!.docs
+            .where((doc) => isActiveCommunityListing(doc.data()))
+            .toList();
+        if (demos.isEmpty)
+          return const Center(
+            child: Text('No demo classes yet.', style: TextStyle(color: muted)),
+          );
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: demos.length,
+          itemBuilder: (context, index) {
+            final doc = demos[index];
+            return _Card({...doc.data(), 'id': doc.id});
+          },
+        );
+      },
+    ),
+  );
+}
+
 Future<void> openPost(BuildContext context) async {
-  if (await requireLogin(context) && context.mounted) {
-    await showPostSheet(context);
-  }
+  if (!await requireLogin(context) || !context.mounted) return;
+  await showModalBottomSheet<void>(
+    context: context,
+    builder: (sheetContext) => SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.school_outlined),
+              title: const Text('Post a class'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                showPostSheet(context);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.volunteer_activism_outlined),
+              title: const Text('Request a class'),
+              subtitle: const Text('Other learners can show interest'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                openCommunityPost(context, 'class_request');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.how_to_vote_outlined),
+              title: const Text('Demo class vote'),
+              subtitle: const Text('Let learners choose a demo'),
+              onTap: () {
+                Navigator.pop(sheetContext);
+                openCommunityPost(context, 'demo_poll');
+              },
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
 }
 
 Future<void> openClass(BuildContext context, Map<String, dynamic> data) async {
   if (await requireLogin(context) && context.mounted) {
-    showMadhuraDetails(context, data);
+    if (data['listing_kind'] == 'class_request' ||
+        data['listing_kind'] == 'demo_poll') {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) =>
+              CommunityDetailPage(listingId: data['id'].toString(), data: data),
+        ),
+      );
+    } else {
+      showMasterClassDetails(context, data);
+    }
   }
 }
 
 final _filterStyle = OutlinedButton.styleFrom(
-  backgroundColor: paper,
+  backgroundColor: Colors.white,
   foregroundColor: ink,
   side: const BorderSide(color: border),
   shape: const StadiumBorder(),
@@ -616,11 +1209,84 @@ class _Label extends StatelessWidget {
   );
 }
 
+class _CategoryIcon extends StatelessWidget {
+  const _CategoryIcon({
+    required this.name,
+    required this.active,
+    required this.onTap,
+  });
+  final String name;
+  final bool active;
+  final VoidCallback onTap;
+
+  IconData get icon => switch (name) {
+    'All' => Icons.apps_outlined,
+    'Music' => Icons.music_note_outlined,
+    'Language' => Icons.translate_outlined,
+    'Foreign Languages' => Icons.public_outlined,
+    'Yoga' => Icons.self_improvement_outlined,
+    'Meditation' => Icons.spa_outlined,
+    'Bhagavat Geeta' => Icons.menu_book_outlined,
+    'Workshop' => Icons.handyman_outlined,
+    'Arts' => Icons.palette_outlined,
+    'Curriculum' => Icons.menu_book_outlined,
+    'Trading / Stock' => Icons.trending_up_outlined,
+    'AI Tools' => Icons.auto_awesome_outlined,
+    _ => Icons.category_outlined,
+  };
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(right: 8, bottom: 5),
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        width: 136,
+        height: 56,
+        padding: const EdgeInsets.symmetric(horizontal: 6),
+        decoration: BoxDecoration(
+          color: active ? const Color(0xFF008ECC) : Colors.white,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: active ? const Color(0xFF0076AA) : border),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 17, color: active ? Colors.white : clay),
+            const SizedBox(width: 6),
+            Expanded(
+              child: Text(
+                name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12,
+                  height: 1.05,
+                  fontWeight: FontWeight.w700,
+                  color: active ? Colors.white : ink,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
 class _Chip extends StatelessWidget {
-  const _Chip(this.text, this.active, this.onTap);
+  const _Chip(
+    this.text,
+    this.active,
+    this.onTap, {
+    this.activeColor = const Color(0xFF008ECC),
+    this.activeTextColor = Colors.white,
+  });
   final String text;
   final bool active;
   final VoidCallback onTap;
+  final Color activeColor;
+  final Color activeTextColor;
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(right: 7),
@@ -631,14 +1297,14 @@ class _Chip extends StatelessWidget {
         alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(horizontal: 13),
         decoration: BoxDecoration(
-          color: active ? ink : const Color(0xFFF1E8DA),
+          color: active ? activeColor : Colors.white,
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
           text,
           style: TextStyle(
             fontSize: 12,
-            color: active ? paper : ink,
+            color: active ? activeTextColor : ink,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -660,7 +1326,11 @@ class _Card extends StatelessWidget {
         categories.keys
             .where((key) => categoryIds[key] == data['category'])
             .firstOrNull ??
-        'Class';
+        (format == 'class_request'
+            ? 'Class request'
+            : format == 'demo_poll'
+            ? 'Demo vote'
+            : 'Class');
     return Padding(
       padding: const EdgeInsets.only(bottom: 15),
       child: Material(
@@ -680,7 +1350,10 @@ class _Card extends StatelessWidget {
                   fit: StackFit.expand,
                   children: [
                     imageBase64.isNotEmpty
-                        ? Image.memory(base64Decode(imageBase64), fit: BoxFit.cover)
+                        ? Image.memory(
+                            base64Decode(imageBase64),
+                            fit: BoxFit.cover,
+                          )
                         : image.isEmpty
                         ? Container(
                             color: const Color(0xFFEEDFCB),
@@ -730,7 +1403,7 @@ class _Card extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         fontFamily: 'serif',
-                        fontSize: 20,
+                        fontSize: 17,
                         fontWeight: FontWeight.w700,
                         color: ink,
                       ),
@@ -744,6 +1417,14 @@ class _Card extends StatelessWidget {
                         style: const TextStyle(fontSize: 13, color: muted),
                       ),
                     ],
+                    if (format == 'class_request' || format == 'demo_poll')
+                      CommunityActivity(
+                        listingId: (data['id'] ?? '').toString(),
+                        isPoll: format == 'demo_poll',
+                        creatorId: (data['creatorId'] ?? '').toString(),
+                        creatorName: (data['creatorName'] ?? 'Member')
+                            .toString(),
+                      ),
                     const SizedBox(height: 11),
                     const Divider(color: border, height: 1),
                     const SizedBox(height: 9),
@@ -765,7 +1446,7 @@ class _Card extends StatelessWidget {
                         Text(
                           format == 'online'
                               ? 'Online'
-                              : (data['city'] ?? 'Bangalore').toString(),
+                              : (data['city'] ?? 'Any city').toString(),
                           style: const TextStyle(fontSize: 11, color: ink),
                         ),
                       ],
@@ -842,6 +1523,33 @@ class _Notice extends StatelessWidget {
   );
 }
 
+class _ListingCountTab extends StatelessWidget {
+  const _ListingCountTab({
+    required this.icon,
+    required this.label,
+    required this.kind,
+    required this.onTap,
+  });
+  final IconData icon;
+  final String label;
+  final String kind;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) =>
+      StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: firestore
+            .collection('listings')
+            .where('listing_kind', isEqualTo: kind)
+            .snapshots(),
+        builder: (context, snapshot) {
+          final active = (snapshot.data?.docs ?? [])
+              .where((doc) => isActiveCommunityListing(doc.data()))
+              .length;
+          return _Tab(icon, '$label($active)', false, onTap);
+        },
+      );
+}
+
 class _Tab extends StatelessWidget {
   const _Tab(this.icon, this.label, this.active, [this.onTap]);
   final IconData icon;
@@ -866,7 +1574,7 @@ class _Tab extends StatelessWidget {
 
 void showProfile(BuildContext context) => showModalBottomSheet(
   context: context,
-  backgroundColor: paper,
+  backgroundColor: Colors.white,
   builder: (context) => const Padding(
     padding: EdgeInsets.all(24),
     child: Column(

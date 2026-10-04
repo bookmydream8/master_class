@@ -1,7 +1,9 @@
 import 'dart:math';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+
 import 'firestore_database.dart';
+
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
@@ -24,7 +26,7 @@ class MasterClassApp extends StatelessWidget {
     debugShowCheckedModeBanner: false,
     theme: ThemeData(
       useMaterial3: true,
-      scaffoldBackgroundColor: cream,
+      scaffoldBackgroundColor: Colors.white,
       colorScheme: ColorScheme.fromSeed(seedColor: clay, surface: paper),
       appBarTheme: const AppBarTheme(surfaceTintColor: Colors.transparent),
       cardTheme: const CardThemeData(
@@ -32,7 +34,7 @@ class MasterClassApp extends StatelessWidget {
         surfaceTintColor: Colors.transparent,
       ),
     ),
-    home: const MadhuraBoard(),
+    home: const MasterClassBoard(),
   );
 }
 
@@ -69,7 +71,7 @@ class _LaunchScreenState extends State<LaunchScreen>
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: pista,
+    backgroundColor: Colors.white,
     body: Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -316,7 +318,7 @@ class BrandHeader extends StatelessWidget {
             style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900),
           ),
           Text(
-            'MASTERCLASS BOARD',
+            'MASTER CLASS',
             style: TextStyle(
               fontSize: 9,
               fontWeight: FontWeight.w800,
@@ -542,7 +544,7 @@ void showDetails(
 ) => showModalBottomSheet(
   context: context,
   isScrollControlled: true,
-  backgroundColor: cream,
+  backgroundColor: Colors.white,
   builder: (context) => DraggableScrollableSheet(
     expand: false,
     initialChildSize: .72,
@@ -607,9 +609,11 @@ void showDetails(
 Future<bool?> showPostSheet(BuildContext context) => showModalBottomSheet<bool>(
   context: context,
   isScrollControlled: true,
-  backgroundColor: cream,
-  builder: (context) =>
-      const FractionallySizedBox(heightFactor: .94, child: MadhuraPostForm()),
+  backgroundColor: Colors.white,
+  builder: (context) => const FractionallySizedBox(
+    heightFactor: .94,
+    child: MasterClassPostForm(),
+  ),
 );
 
 class PostForm extends StatefulWidget {
