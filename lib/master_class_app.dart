@@ -299,14 +299,13 @@ class BrandHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Row(
     children: [
-      Container(
-        width: 43,
-        height: 43,
-        alignment: Alignment.center,
-        decoration: const BoxDecoration(color: pista, shape: BoxShape.circle),
-        child: const Text(
-          'MC',
-          style: TextStyle(fontWeight: FontWeight.w900, color: forest),
+      ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.asset(
+          'logo.png',
+          width: 43,
+          height: 43,
+          fit: BoxFit.cover,
         ),
       ),
       const SizedBox(width: 10),

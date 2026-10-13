@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'admin_moderation.dart';
 import 'firestore_database.dart';
 import 'madhura_board.dart' as board;
 
@@ -65,9 +66,15 @@ class MasterClassDetailPage extends StatelessWidget {
         : end.isNotEmpty && end != start
         ? '$start – $end'
         : start;
+    final physicalPlace = [
+      (data['area'] ?? '').toString(),
+      (data['city'] ?? '').toString(),
+    ].where((value) => value.isNotEmpty).join(', ');
     final place = format == 'online'
         ? 'Online'
-        : (data['city'] ?? 'Bangalore').toString();
+        : physicalPlace.isEmpty
+        ? 'Any city'
+        : physicalPlace;
     final map = (data['map_location'] ?? '').toString();
     final spokenLanguages = (data['spoken_languages'] as List? ?? const [])
         .map((value) => value.toString())
@@ -80,7 +87,7 @@ class MasterClassDetailPage extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: board.paper,
+        backgroundColor: Colors.white,
         foregroundColor: board.ink,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -89,7 +96,7 @@ class MasterClassDetailPage extends StatelessWidget {
               title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontFamily: 'serif', fontSize: 17),
+              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
             ),
             Text(
               board.formats[format] ?? 'Class',
@@ -98,6 +105,7 @@ class MasterClassDetailPage extends StatelessWidget {
           ],
         ),
         actions: [
+          AdminDeletePostButton(listingId: listingId, title: title),
           IconButton(
             tooltip: 'Copy listing title',
             onPressed: () => copy(context, title, 'Listing title copied'),
@@ -107,32 +115,49 @@ class MasterClassDetailPage extends StatelessWidget {
       ),
       body: ListView(
         children: [
-          SizedBox(
-            height: 245,
-            width: double.infinity,
-            child: imageBase64.isNotEmpty
-                ? Image.memory(base64Decode(imageBase64), fit: BoxFit.cover)
-                : image.isEmpty
-                ? Container(
-                    color: const Color(0xFFEEDFCB),
-                    child: const Icon(
-                      Icons.auto_awesome,
-                      color: board.clay,
-                      size: 74,
-                    ),
-                  )
-                : Image.network(
-                    image,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stack) => Container(
-                      color: const Color(0xFFEEDFCB),
-                      child: const Icon(
-                        Icons.auto_awesome,
-                        color: board.clay,
-                        size: 74,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(20),
+              child: SizedBox(
+                height: 245,
+                width: double.infinity,
+                child: imageBase64.isNotEmpty
+                    ? Image.memory(
+                        base64Decode(imageBase64),
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => const ColoredBox(
+                          color: Color(0xFFFFE8D6),
+                          child: Icon(
+                            Icons.auto_stories_outlined,
+                            size: 64,
+                            color: Color(0xFFD66D27),
+                          ),
+                        ),
+                      )
+                    : image.isEmpty
+                    ? const ColoredBox(
+                        color: Color(0xFFFFE8D6),
+                        child: Icon(
+                          Icons.auto_stories_outlined,
+                          size: 64,
+                          color: Color(0xFFD66D27),
+                        ),
+                      )
+                    : Image.network(
+                        image,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, _, _) => const ColoredBox(
+                          color: Color(0xFFFFE8D6),
+                          child: Icon(
+                            Icons.auto_stories_outlined,
+                            size: 64,
+                            color: Color(0xFFD66D27),
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
+              ),
+            ),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 17, 16, 35),
@@ -153,11 +178,10 @@ class MasterClassDetailPage extends StatelessWidget {
                 Text(
                   title,
                   style: const TextStyle(
-                    fontFamily: 'serif',
-                    fontSize: 27,
+                    fontSize: 25,
                     height: 1.13,
                     fontWeight: FontWeight.w700,
-                    color: board.ink,
+                    color: Color(0xFF1A1A1A),
                   ),
                 ),
                 const SizedBox(height: 18),
@@ -167,7 +191,9 @@ class MasterClassDetailPage extends StatelessWidget {
                     const SizedBox(width: 6),
                     Expanded(
                       child: _Stat(
-                        format == 'competition' ? 'WINDOW' : 'DATES',
+                        format == 'competition' || format == 'event'
+                            ? 'WHEN'
+                            : 'DATES',
                         dates,
                       ),
                     ),
@@ -180,6 +206,8 @@ class MasterClassDetailPage extends StatelessWidget {
                   _Section(
                     format == 'competition'
                         ? 'ABOUT THIS COMPETITION'
+                        : format == 'event'
+                        ? 'ABOUT THIS EVENT'
                         : 'ABOUT THIS CLASS',
                     data['description'].toString(),
                   ),
@@ -247,8 +275,8 @@ class _Stat extends StatelessWidget {
     height: 66,
     padding: const EdgeInsets.all(9),
     decoration: BoxDecoration(
-      color: board.paper,
-      border: Border.all(color: board.border),
+      color: Colors.white,
+      border: Border.all(color: const Color(0xFFECECEC)),
       borderRadius: BorderRadius.circular(12),
     ),
     child: Column(
@@ -287,8 +315,8 @@ class _Section extends StatelessWidget {
     padding: const EdgeInsets.all(15),
     margin: const EdgeInsets.only(bottom: 13),
     decoration: BoxDecoration(
-      color: board.paper,
-      border: Border.all(color: board.border),
+      color: Colors.white,
+      border: Border.all(color: const Color(0xFFECECEC)),
       borderRadius: BorderRadius.circular(17),
     ),
     child: Column(
@@ -337,8 +365,8 @@ class ClassInterestCount extends StatelessWidget {
             padding: const EdgeInsets.all(15),
             margin: const EdgeInsets.only(bottom: 13),
             decoration: BoxDecoration(
-              color: board.paper,
-              border: Border.all(color: board.border),
+              color: Colors.white,
+              border: Border.all(color: const Color(0xFFECECEC)),
               borderRadius: BorderRadius.circular(17),
             ),
             child: Row(
@@ -513,8 +541,8 @@ class _PrivateClassAccess extends StatelessWidget {
             margin: const EdgeInsets.only(top: 10),
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              color: board.paper,
-              border: Border.all(color: board.border),
+              color: Colors.white,
+              border: Border.all(color: const Color(0xFFECECEC)),
               borderRadius: BorderRadius.circular(14),
             ),
             child: Column(
@@ -572,8 +600,8 @@ class _OwnerInterestList extends StatelessWidget {
         margin: const EdgeInsets.only(bottom: 13),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: board.paper,
-          border: Border.all(color: board.border),
+          color: Colors.white,
+          border: Border.all(color: const Color(0xFFECECEC)),
           borderRadius: BorderRadius.circular(14),
         ),
         child: Column(

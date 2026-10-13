@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -350,6 +351,8 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   final expertDetails = TextEditingController();
+  String profileCity = '';
+  String profilePhone = '';
   bool loading = true;
   bool saving = false;
   bool editing = false;
@@ -374,6 +377,8 @@ class _ProfilePageState extends State<ProfilePage> {
       final data = (await firestore.collection('profiles').doc(user.uid).get())
           .data();
       expertDetails.text = (data?['expertDetails'] ?? '').toString();
+      profileCity = (data?['city'] ?? '').toString();
+      profilePhone = (data?['phoneNumber'] ?? '').toString();
     } catch (_) {
       // A profile document may not exist yet. The form remains usable.
     } finally {
@@ -463,7 +468,10 @@ class _ProfilePageState extends State<ProfilePage> {
     appBar: AppBar(
       backgroundColor: board.paper,
       foregroundColor: board.ink,
-      title: const Text('Your profile', style: TextStyle(fontFamily: 'serif')),
+      title: const Text(
+        'Profile',
+        style: TextStyle(fontWeight: FontWeight.w800),
+      ),
       actions: [
         TextButton.icon(
           onPressed: saving
@@ -485,13 +493,8 @@ class _ProfilePageState extends State<ProfilePage> {
         : ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: board.ink,
-                  borderRadius: BorderRadius.circular(22),
-                ),
-                child: Row(
+              Center(
+                child: Column(
                   children: [
                     _Avatar(
                       url: user.photoURL ?? '',
@@ -500,45 +503,34 @@ class _ProfilePageState extends State<ProfilePage> {
                           ? null
                           : File(selectedPhoto!.path),
                     ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                    const SizedBox(height: 12),
+                    Text(
+                      user.displayName ?? 'Google account',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 21,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF1A1A1A),
+                      ),
+                    ),
+                    if (profileCity.isNotEmpty) ...[
+                      const SizedBox(height: 5),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
-                          const Text(
-                            'MASTER PROFILE',
-                            style: TextStyle(
-                              fontSize: 10,
-                              letterSpacing: 1.3,
-                              fontWeight: FontWeight.w700,
-                              color: board.gold,
-                            ),
+                          const Icon(
+                            Icons.location_on_outlined,
+                            size: 16,
+                            color: Color(0xFF8B8B8B),
                           ),
-                          const SizedBox(height: 5),
+                          const SizedBox(width: 3),
                           Text(
-                            user.displayName ?? 'Google account',
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontFamily: 'serif',
-                              fontSize: 22,
-                              fontWeight: FontWeight.w700,
-                              color: board.paper,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            user.email ?? '',
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFFDCCDBA),
-                            ),
+                            profileCity,
+                            style: const TextStyle(color: Color(0xFF8B8B8B)),
                           ),
                         ],
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
@@ -555,45 +547,28 @@ class _ProfilePageState extends State<ProfilePage> {
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: board.paper,
+                  color: Colors.white,
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: board.border),
+                  border: Border.all(color: const Color(0xFFECECEC)),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const _ProfileLabel('GOOGLE ACCOUNT'),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(14),
-                      decoration: BoxDecoration(
-                        color: board.cream,
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(color: board.border),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            user.displayName ?? 'Google account',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: board.ink,
-                            ),
-                          ),
-                          const SizedBox(height: 3),
-                          Text(
-                            user.email ?? '',
-                            style: const TextStyle(
-                              fontSize: 13,
-                              color: board.muted,
-                            ),
-                          ),
-                        ],
-                      ),
+                    const _ProfileLabel('CONTACT & EXPERTISE'),
+                    _ProfileInfoRow(
+                      icon: Icons.mail_outline,
+                      label: 'Email',
+                      value: user.email ?? 'No email available',
                     ),
-                    const SizedBox(height: 16),
+                    if (profilePhone.isNotEmpty) ...[
+                      const Divider(height: 1, color: Color(0xFFECECEC)),
+                      _ProfileInfoRow(
+                        icon: Icons.call_outlined,
+                        label: 'Phone',
+                        value: profilePhone,
+                      ),
+                    ],
+                    const Divider(height: 24, color: Color(0xFFECECEC)),
                     const _ProfileLabel('EXPERT DETAILS'),
                     if (editing)
                       TextField(
@@ -649,7 +624,56 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               ),
               const SizedBox(height: 14),
-              const _ProfileLabel('MY POSTS'),
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFEDF8EF),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFCDE8D1)),
+                ),
+                child: const Row(
+                  children: [
+                    Icon(
+                      Icons.school_outlined,
+                      color: Color(0xFF1B6D24),
+                      size: 30,
+                    ),
+                    SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'YOUR CLASSES',
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF1B6D24),
+                              letterSpacing: 1,
+                            ),
+                          ),
+                          SizedBox(height: 3),
+                          Text(
+                            'Manage your posts',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF173A1B),
+                            ),
+                          ),
+                          Text(
+                            'Open a class to view it or tap Update',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF55725A),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                 stream: firestore
                     .collection('listings')
@@ -662,36 +686,38 @@ class _ProfilePageState extends State<ProfilePage> {
                       'No classes posted yet.',
                       style: TextStyle(color: board.muted),
                     );
-                  return Column(
-                    children: classes
-                        .map(
-                          (doc) => ListTile(
-                            tileColor: board.paper,
-                            title: Text(
-                              (doc.data()['title'] ?? 'Untitled class')
-                                  .toString(),
-                            ),
-                            onTap: () => showMasterClassDetails(context, {
-                              ...doc.data(),
-                              'id': doc.id,
-                            }),
-                            trailing: TextButton(
-                              child: const Text('Update'),
-                              onPressed: () => showModalBottomSheet<bool>(
-                                context: context,
-                                isScrollControlled: true,
-                                builder: (_) => FractionallySizedBox(
-                                  heightFactor: .94,
-                                  child: MasterClassPostForm(
-                                    existing: doc.data(),
-                                    listingId: doc.id,
-                                  ),
-                                ),
-                              ),
+                  return GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: classes.length,
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                          childAspectRatio: .57,
+                        ),
+                    itemBuilder: (context, index) {
+                      final doc = classes[index];
+                      return _PostedClassCard(
+                        data: doc.data(),
+                        onOpen: () => showMasterClassDetails(context, {
+                          ...doc.data(),
+                          'id': doc.id,
+                        }),
+                        onUpdate: () => showModalBottomSheet<bool>(
+                          context: context,
+                          isScrollControlled: true,
+                          builder: (_) => FractionallySizedBox(
+                            heightFactor: .94,
+                            child: MasterClassPostForm(
+                              existing: doc.data(),
+                              listingId: doc.id,
                             ),
                           ),
-                        )
-                        .toList(),
+                        ),
+                      );
+                    },
                   );
                 },
               ),
@@ -733,18 +759,236 @@ class _ProfilePageState extends State<ProfilePage> {
                 },
               ),
               const SizedBox(height: 14),
-              OutlinedButton.icon(
-                onPressed: () async {
-                  await FirebaseAuth.instance.signOut();
-                  await _googleSignIn.signOut();
-                  if (mounted)
+              const _ProfileLabel('ACCOUNT'),
+              Card(
+                color: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                  side: const BorderSide(color: Color(0xFFE9DED1)),
+                ),
+                child: ListTile(
+                  onTap: () async {
+                    await FirebaseAuth.instance.signOut();
+                    await _googleSignIn.signOut();
+                    if (!mounted) return;
                     Navigator.of(context).popUntil((route) => route.isFirst);
-                },
-                icon: const Icon(Icons.logout),
-                label: const Text('Sign out'),
+                  },
+                  leading: const Icon(Icons.logout, color: Color(0xFFE11D48)),
+                  title: const Text(
+                    'Sign out',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFFE11D48),
+                    ),
+                  ),
+                  subtitle: const Text('Sign out of your account'),
+                  trailing: const Icon(
+                    Icons.chevron_right,
+                    color: Color(0xFF8B8B8B),
+                  ),
+                ),
               ),
             ],
           ),
+  );
+}
+
+class _PostedClassCard extends StatelessWidget {
+  const _PostedClassCard({
+    required this.data,
+    required this.onOpen,
+    required this.onUpdate,
+  });
+
+  final Map<String, dynamic> data;
+  final VoidCallback onOpen;
+  final VoidCallback onUpdate;
+
+  @override
+  Widget build(BuildContext context) {
+    final format = board.listingFormat(data);
+    final imageBase64 = (data['image_base64'] ?? '').toString();
+    final imageUrl =
+        (data['image_url'] ?? data['imageUrl'] ?? data['photoUrl'] ?? '')
+            .toString();
+    final title = (data['title'] ?? 'Untitled class').toString();
+    final categoryId = (data['category'] ?? '').toString();
+    var category = categoryId.isEmpty ? 'Class' : categoryId;
+    for (final entry in board.categoryIds.entries) {
+      if (entry.value == categoryId) {
+        category = entry.key;
+        break;
+      }
+    }
+    final subcategory = (data['subcategory'] ?? '').toString();
+    final place = format == 'online'
+        ? 'Online'
+        : [
+            (data['area'] ?? '').toString(),
+            (data['city'] ?? '').toString(),
+          ].where((value) => value.trim().isNotEmpty).join(', ');
+
+    Widget imageHeader() {
+      if (imageBase64.isNotEmpty) {
+        try {
+          return Image.memory(base64Decode(imageBase64), fit: BoxFit.cover);
+        } on FormatException {
+          // Fall through to the remote image or a neutral placeholder.
+        }
+      }
+      if (imageUrl.isNotEmpty) {
+        return Image.network(
+          imageUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (_, error, stackTrace) =>
+              const _PostedClassImagePlaceholder(),
+        );
+      }
+      return const _PostedClassImagePlaceholder();
+    }
+
+    return Material(
+      color: Colors.white,
+      elevation: 2,
+      shadowColor: const Color(0x16241912),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: const BorderSide(color: Color(0x66000000), width: 1),
+      ),
+      child: InkWell(
+        onTap: onOpen,
+        borderRadius: BorderRadius.circular(18),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(18),
+              ),
+              child: SizedBox(
+                width: double.infinity,
+                height: 112,
+                child: imageHeader(),
+              ),
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(11, 10, 8, 7),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            board.formats[format] ?? 'Class',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: Color(0xFF1A1A1A),
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                        Text(
+                          board.listingPrice(data),
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Color(0xFF1A1A1A),
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        height: 1.15,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF1A1A1A),
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      [
+                        category,
+                        subcategory,
+                      ].where((value) => value.trim().isNotEmpty).join(' · '),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFF1A1A1A),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        const Icon(
+                          Icons.place_outlined,
+                          size: 13,
+                          color: Color(0xFF799487),
+                        ),
+                        const SizedBox(width: 3),
+                        Expanded(
+                          child: Text(
+                            place.isEmpty ? 'Location to be announced' : place,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 10,
+                              color: Color(0xFF1A1A1A),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: onUpdate,
+                        style: TextButton.styleFrom(
+                          foregroundColor: const Color(0xFF0C6A5A),
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 7),
+                          minimumSize: const Size(0, 28),
+                        ),
+                        icon: const Icon(Icons.edit_outlined, size: 13),
+                        label: const Text(
+                          'Update',
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PostedClassImagePlaceholder extends StatelessWidget {
+  const _PostedClassImagePlaceholder();
+
+  @override
+  Widget build(BuildContext context) => const ColoredBox(
+    color: Color(0xFFEEDFCB),
+    child: Center(
+      child: Icon(Icons.auto_stories_outlined, color: Color(0xFFD87824)),
+    ),
   );
 }
 
@@ -766,6 +1010,62 @@ class _Avatar extends StatelessWidget {
         fontSize: 34,
         color: board.ink,
       ),
+    ),
+  );
+}
+
+class _ProfileInfoRow extends StatelessWidget {
+  const _ProfileInfoRow({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  final IconData icon;
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 12),
+    child: Row(
+      children: [
+        Container(
+          width: 36,
+          height: 36,
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF4E6),
+            borderRadius: BorderRadius.circular(18),
+          ),
+          child: Icon(icon, size: 18, color: const Color(0xFFD87824)),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label.toUpperCase(),
+                style: const TextStyle(
+                  fontSize: 11,
+                  color: Color(0xFF8B8B8B),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     ),
   );
 }

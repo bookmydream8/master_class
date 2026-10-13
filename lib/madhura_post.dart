@@ -1,14 +1,17 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'firestore_database.dart';
 
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 
 import 'madhura_board.dart' as board;
 
@@ -23,14 +26,23 @@ const spokenLanguageOptions = <String>[
   'Bengali',
   'Gujarati',
   'Punjabi',
+  'Odia',
+  'Assamese',
+  'Konkani',
+  'Kashmiri',
+  'Sindhi',
+  'Nepali',
+  'Manipuri',
+  'Bodo',
+  'Dogri',
+  'Maithili',
+  'Santali',
   'Urdu',
   'Sanskrit',
   'French',
   'German',
   'Spanish',
   'Japanese',
-  'Korean',
-  'Mandarin Chinese',
 ];
 const ageGroupOptions = <String>[
   'Preschooler · 3–5 years',
@@ -55,6 +67,7 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
   String? focus;
   String city = '';
   final customCity = TextEditingController();
+  final area = TextEditingController();
   bool isFree = true;
   bool saving = false;
   bool locating = false;
@@ -64,7 +77,10 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
   TimeOfDay? startTime;
   final ageGroups = <String>{};
   final spokenLanguages = <String>{};
+  final customSpokenLanguage = TextEditingController();
   XFile? selectedPhoto;
+  bool choosingPhoto = false;
+  String profilePhone = '';
   final title = TextEditingController();
   final description = TextEditingController();
   final aboutMaster = TextEditingController();
@@ -106,7 +122,9 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
     previousLinks.text = (data['previous_class_links'] ?? '').toString();
     mapLink.text = (data['map_location'] ?? '').toString();
     landmark.text = (data['landmark'] ?? '').toString();
+    area.text = (data['area'] ?? '').toString();
     _loadPrivateContact();
+    _loadProfilePhone();
     startDate = DateTime.tryParse((data['start_date'] ?? '').toString());
     expiryDate =
         DateTime.tryParse((data['expiry_date'] ?? '').toString()) ?? startDate;
@@ -139,7 +157,8 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
       if (!mounted || profile == null) return;
       setState(() {
         aboutMaster.text = (profile['expertDetails'] ?? '').toString();
-        contactNumber.text = (profile['phoneNumber'] ?? '').toString();
+        profilePhone = (profile['phoneNumber'] ?? '').toString().trim();
+        contactNumber.text = profilePhone;
         final profileCity =
             (profile['city'] ?? profile['preferredPhysicalCity'] ?? '')
                 .toString();
@@ -156,12 +175,59 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
   }
 
   Future<void> choosePhoto() async {
-    final photo = await ImagePicker().pickImage(
-      source: ImageSource.gallery,
-      maxWidth: 900,
-      imageQuality: 65,
-    );
-    if (photo != null && mounted) setState(() => selectedPhoto = photo);
+    if (choosingPhoto) return;
+    setState(() {
+      choosingPhoto = true;
+      error = null;
+    });
+    try {
+      final photo = await ImagePicker().pickImage(
+        source: ImageSource.gallery,
+        maxWidth: 1200,
+        imageQuality: 75,
+      );
+      if (photo == null) return;
+      final cropped = await ImageCropper().cropImage(
+        sourcePath: photo.path,
+        compressFormat: ImageCompressFormat.jpg,
+        compressQuality: 55,
+        maxWidth: 800,
+        maxHeight: 800,
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: 'Crop class photo',
+            toolbarColor: board.ink,
+            toolbarWidgetColor: Colors.white,
+            initAspectRatio: CropAspectRatioPreset.ratio16x9,
+            lockAspectRatio: false,
+          ),
+        ],
+      );
+      if (cropped == null || !mounted) return;
+      final prepared = XFile(cropped.path);
+      if (await prepared.length() > 600 * 1024) {
+        if (mounted) {
+          setState(
+            () => error = 'This photo is too large. Crop a smaller area or choose another photo.',
+          );
+        }
+        return;
+      }
+      if (mounted) setState(() => selectedPhoto = prepared);
+    } catch (e) {
+      if (mounted) setState(() => error = 'Could not prepare the photo: $e');
+    } finally {
+      if (mounted) setState(() => choosingPhoto = false);
+    }
+  }
+
+  void _addCustomSpokenLanguage() {
+    final value = customSpokenLanguage.text.trim();
+    if (value.isEmpty) return;
+    setState(() {
+      spokenLanguages.add(value);
+      customSpokenLanguage.clear();
+    });
   }
 
   @override
@@ -175,12 +241,25 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
       price,
       mapLink,
       customCity,
+      area,
       customCategory,
       customSubcategory,
+      customSpokenLanguage,
     ]) {
       controller.dispose();
     }
     super.dispose();
+  }
+
+  Future<void> _loadProfilePhone() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    try {
+      final profile =
+          (await firestore.collection('profiles').doc(user.uid).get()).data();
+      final value = (profile?['phoneNumber'] ?? '').toString().trim();
+      if (mounted && value.isNotEmpty) setState(() => profilePhone = value);
+    } catch (_) {}
   }
 
   Future<void> _loadPrivateContact() async {
@@ -308,6 +387,18 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
       setState(() => error = 'Enter a city name.');
       return;
     }
+    final requiresPhysicalArea =
+        format == 'physical' || format == 'competition';
+    if (requiresPhysicalArea && selectedCity.isEmpty) {
+      setState(() => error = 'Select the city for this physical listing.');
+      return;
+    }
+    if (requiresPhysicalArea && area.text.trim().isEmpty) {
+      setState(
+        () => error = 'Enter the area / locality for this physical listing.',
+      );
+      return;
+    }
     setState(() {
       saving = true;
       error = null;
@@ -317,16 +408,28 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
       if (user == null || user.isAnonymous) {
         throw StateError('Please sign in before publishing.');
       }
+      final photoBytes = selectedPhoto == null
+          ? null
+          : await selectedPhoto!.readAsBytes();
+      if (photoBytes != null && photoBytes.lengthInBytes > 600 * 1024) {
+        throw StateError('The photo is too large. Choose a smaller crop.');
+      }
+      final encodedPhoto = photoBytes == null
+          ? null
+          : await compute(base64Encode, photoBytes);
       final legacyType = switch (format) {
         'physical' => 'offline_class',
         'online' => 'online_class',
+        // Keep the legacy type accepted by existing Firestore rules.
+        'event' => 'competition',
         _ => 'competition',
       };
       final now = DateTime.now();
       final ref = firestore
           .collection('listings')
           .doc(
-            widget.listingId ?? '${legacyType}_${now.millisecondsSinceEpoch}',
+            widget.listingId ??
+                '${format}_${user.uid}_${now.microsecondsSinceEpoch}',
           );
       await ref
           .set({
@@ -342,8 +445,12 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
             'title': title.text.trim(),
             'description': description.text.trim(),
             'about_master': aboutMaster.text.trim(),
-            if (selectedPhoto != null)
-              'image_base64': base64Encode(await selectedPhoto!.readAsBytes()),
+            if (encodedPhoto != null) 'image_base64': encodedPhoto,
+            if (encodedPhoto == null &&
+                widget.existing?['image_base64'] is String)
+              'image_base64': widget.existing!['image_base64'],
+            if (encodedPhoto == null && widget.existing?['image_url'] is String)
+              'image_url': widget.existing!['image_url'],
             'priceType': isFree ? 'free' : 'paid',
             'is_free': isFree,
             'price': isFree ? 0 : amount,
@@ -372,12 +479,16 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
               'previous_class_links': previousLinks.text.trim(),
             if (format != 'online' && selectedCity.isNotEmpty)
               'city': selectedCity,
+            if ((format == 'physical' || format == 'competition') &&
+                area.text.trim().isNotEmpty)
+              'area': area.text.trim(),
             if (format != 'online' && landmark.text.trim().isNotEmpty)
               'landmark': landmark.text.trim(),
             if (format != 'online' && mapLink.text.trim().isNotEmpty)
               'map_location': mapLink.text.trim(),
             if (format == 'online') 'topic': focus ?? category,
             'creatorId': user.uid,
+            'creatorName': user.displayName ?? 'Class master',
             'creatorEmail': user.email ?? '',
             'createdAt': now.toIso8601String(),
             'updatedAt': now.toIso8601String(),
@@ -437,11 +548,11 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
           const SizedBox(height: 14),
           Row(
             children: [
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    const Text(
                       'SHARE WHAT YOU KNOW',
                       style: TextStyle(
                         fontSize: 10,
@@ -449,10 +560,10 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                         color: board.muted,
                       ),
                     ),
-                    SizedBox(height: 5),
+                    const SizedBox(height: 5),
                     Text(
-                      'Post a class',
-                      style: TextStyle(
+                      format == 'event' ? 'Post an event' : 'Post a class',
+                      style: const TextStyle(
                         fontFamily: 'serif',
                         fontSize: 26,
                         fontWeight: FontWeight.w700,
@@ -476,6 +587,14 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                 Wrap(
                   spacing: 7,
                   children: board.formats.entries
+                      .where(
+                        (entry) => const {
+                          'online',
+                          'physical',
+                          'competition',
+                          'event',
+                        }.contains(entry.key),
+                      )
                       .map(
                         (entry) => ChoiceChip(
                           label: Text(entry.value),
@@ -584,6 +703,33 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                       )
                       .toList(),
                 ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: customSpokenLanguage,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: _decoration('Other language'),
+                        onSubmitted: (_) => _addCustomSpokenLanguage(),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton.filledTonal(
+                      tooltip: 'Add language',
+                      onPressed: _addCustomSpokenLanguage,
+                      icon: const Icon(Icons.add),
+                    ),
+                  ],
+                ),
+                for (final language in spokenLanguages.where(
+                  (value) => !spokenLanguageOptions.contains(value),
+                ))
+                  InputChip(
+                    label: Text(language),
+                    onDeleted: () =>
+                        setState(() => spokenLanguages.remove(language)),
+                  ),
                 const SizedBox(height: 14),
                 const Text(
                   'Suitable age groups · optional',
@@ -643,12 +789,44 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
           ),
           _FormCard(
             'COVER PHOTO · OPTIONAL',
-            OutlinedButton.icon(
-              onPressed: choosePhoto,
-              icon: const Icon(Icons.photo_library_outlined),
-              label: Text(
-                selectedPhoto == null ? 'Upload photo' : 'Photo selected',
-              ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                OutlinedButton.icon(
+                  onPressed: choosingPhoto || saving ? null : choosePhoto,
+                  icon: choosingPhoto
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.photo_library_outlined),
+                  label: Text(
+                    choosingPhoto
+                        ? 'Preparing photo…'
+                        : selectedPhoto == null
+                        ? 'Choose and crop photo'
+                        : 'Change photo',
+                  ),
+                ),
+                if (selectedPhoto != null) ...[
+                  const SizedBox(height: 10),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Image.file(
+                      File(selectedPhoto!.path),
+                      height: 120,
+                      width: double.infinity,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                  const SizedBox(height: 5),
+                  const Text(
+                    'Photo ready to publish',
+                    style: TextStyle(fontSize: 12),
+                  ),
+                ],
+              ],
             ),
           ),
           _FormCard(
@@ -669,6 +847,17 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                   keyboardType: TextInputType.phone,
                   decoration: _decoration('Contact / WhatsApp number *'),
                 ),
+                if (profilePhone.isNotEmpty)
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: TextButton.icon(
+                      onPressed: () =>
+                          setState(() => contactNumber.text = profilePhone),
+                      icon: const Icon(Icons.content_copy_outlined, size: 16),
+                      label: const Text('Use phone from profile'),
+                    ),
+                  ),
+
                 const SizedBox(height: 10),
                 TextField(
                   controller: sessionLink,
@@ -766,13 +955,19 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
           ),
           if (format != 'online')
             _FormCard(
-              'LOCATION · OPTIONAL',
+              format == 'physical' || format == 'competition'
+                  ? 'LOCATION · REQUIRED FOR PHYSICAL LISTINGS'
+                  : 'LOCATION · OPTIONAL',
               Column(
                 children: [
                   DropdownButtonFormField<String>(
                     key: ValueKey(city),
                     initialValue: city.isEmpty ? null : city,
-                    decoration: _decoration('City (optional)'),
+                    decoration: _decoration(
+                      format == 'physical' || format == 'competition'
+                          ? 'City *'
+                          : 'City (optional)',
+                    ),
                     items: [
                       ...board.cities.map(
                         (value) =>
@@ -792,6 +987,17 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                       textCapitalization: TextCapitalization.words,
                       maxLength: 100,
                       decoration: _decoration('Enter city name'),
+                    ),
+                  ],
+                  if (format == 'physical' || format == 'competition') ...[
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: area,
+                      textCapitalization: TextCapitalization.words,
+                      maxLength: 100,
+                      decoration: _decoration(
+                        'Area / locality * — e.g. Indiranagar',
+                      ),
                     ),
                   ],
                   const SizedBox(height: 10),

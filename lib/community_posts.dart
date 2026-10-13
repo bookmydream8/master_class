@@ -5,6 +5,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'auth_profile.dart' show requireLogin;
+import 'admin_moderation.dart';
 import 'firestore_database.dart';
 import 'madhura_board.dart' as board;
 
@@ -490,7 +491,15 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
     final owner = user?.uid == widget.data['creatorId'];
     return Scaffold(
       backgroundColor: Colors.white,
-      appBar: AppBar(title: Text(isPoll ? 'Demo class vote' : 'Class request')),
+      appBar: AppBar(
+        title: Text(isPoll ? 'Demo class vote' : 'Class request'),
+        actions: [
+          AdminDeletePostButton(
+            listingId: widget.listingId,
+            title: (widget.data['title'] ?? 'Post').toString(),
+          ),
+        ],
+      ),
       body: ListView(
         padding: const EdgeInsets.all(18),
         children: [

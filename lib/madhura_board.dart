@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -9,7 +8,7 @@ import 'firestore_database.dart';
 import 'package:flutter/material.dart';
 
 import 'master_class_app.dart' show showPostSheet;
-import 'madhura_detail.dart' show showMasterClassDetails;
+import 'madhura_detail.dart' show MasterClassDetailPage, showMasterClassDetails;
 import 'auth_profile.dart' show requireLogin, openProfile;
 import 'community_posts.dart'
     show CommunityActivity, CommunityDetailPage, openCommunityPost;
@@ -90,6 +89,23 @@ const categories = <String, List<String>>{
     'Theatre',
     'Calligraphy',
   ],
+  'Adult': [
+    'Career development',
+    'Financial literacy',
+    'Parenting',
+    'Wellness',
+    'Life skills',
+  ],
+  'Sports': [
+    'Cricket',
+    'Football',
+    'Badminton',
+    'Swimming',
+    'Tennis',
+    'Basketball',
+    'Martial arts',
+    'Fitness',
+  ],
   'Foreign Languages': [
     'French',
     'German',
@@ -138,6 +154,8 @@ const categoryIds = <String, String>{
   'Bhagavat Geeta': 'bhagavat_geeta',
   'Workshop': 'workshop',
   'Arts': 'arts',
+  'Adult': 'adult',
+  'Sports': 'sports',
   'Curriculum': 'curriculum',
   'Trading / Stock': 'trading',
   'Custom': 'custom',
@@ -162,6 +180,7 @@ const formats = <String, String>{
   'physical': 'Physical class',
   'online': 'Online class',
   'competition': 'Competition',
+  'event': 'Event',
   'class_request': 'Class request',
   'demo_poll': 'Demo vote',
 };
@@ -202,57 +221,27 @@ class MasterClassBoard extends StatefulWidget {
 class _MasterClassBoardState extends State<MasterClassBoard> {
   final search = TextEditingController();
   String? category, focus;
+  bool freeOnly = false;
+  String? _browseFormat;
   String city = '';
+  String area = '';
   String savedPhysicalCity = 'Bangalore';
+  String savedPhysicalArea = '';
+  String savedEventCity = 'Bangalore';
   final selectedFormats = <String>{'online'};
-  final _formatScrollController = ScrollController();
-  final _categoryScrollController = ScrollController();
-  Timer? _filterScrollTimer;
-  bool _formatScrollForward = true;
-  bool _categoryScrollForward = true;
   static const _pageSize = 30;
   final _listingDocs = <QueryDocumentSnapshot<Map<String, dynamic>>>[];
   DocumentSnapshot<Map<String, dynamic>>? _lastListing;
   DocumentSnapshot<Map<String, dynamic>>? _lastLegacyListing;
   bool _loadingListings = false;
   bool _loadingMore = false;
+  bool _pendingListingReset = false;
   bool _hasMoreListings = true;
   String? _listingError;
   @override
   void initState() {
     super.initState();
     _loadPreferredCity();
-    _loadListings(reset: true);
-    WidgetsBinding.instance.addPostFrameCallback(
-      (_) => _startFilterAutoScroll(),
-    );
-  }
-
-  void _startFilterAutoScroll() {
-    _filterScrollTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      _bounceScroll(_formatScrollController, isFormat: true);
-      _bounceScroll(_categoryScrollController, isFormat: false);
-    });
-  }
-
-  void _bounceScroll(ScrollController controller, {required bool isFormat}) {
-    if (!mounted || !controller.hasClients) return;
-    final position = controller.position;
-    if (position.maxScrollExtent <= 0) return;
-    final forward = isFormat ? _formatScrollForward : _categoryScrollForward;
-    final target = forward
-        ? position.maxScrollExtent
-        : position.minScrollExtent;
-    controller.animateTo(
-      target,
-      duration: const Duration(milliseconds: 850),
-      curve: Curves.easeInOut,
-    );
-    if (isFormat) {
-      _formatScrollForward = !forward;
-    } else {
-      _categoryScrollForward = !forward;
-    }
   }
 
   Future<void> _loadPreferredCity() async {
@@ -264,12 +253,24 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
       final value = (data?['preferredPhysicalCity'] ?? data?['city'] ?? '')
           .toString()
           .trim();
-      if (value.isNotEmpty && mounted) {
+      final eventValue = (data?['preferredEventCity'] ?? '').toString().trim();
+      final areaValue = (data?['preferredPhysicalArea'] ?? '')
+          .toString()
+          .trim();
+      if (mounted) {
         setState(() {
-          savedPhysicalCity = value;
-          if (selectedFormats.contains('physical') ||
-              selectedFormats.contains('competition'))
-            city = value;
+          if (value.isNotEmpty) savedPhysicalCity = value;
+          savedPhysicalArea = areaValue;
+          if (data?.containsKey('preferredEventCity') == true) {
+            savedEventCity = eventValue;
+          }
+          if (selectedFormats.contains('event')) {
+            city = savedEventCity;
+          } else if (selectedFormats.contains('physical') ||
+              selectedFormats.contains('competition')) {
+            city = savedPhysicalCity;
+            area = savedPhysicalArea;
+          }
         });
       }
     } catch (_) {}
@@ -287,9 +288,58 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
     } catch (_) {}
   }
 
+  Future<void> _rememberPhysicalArea(String value) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    setState(() => savedPhysicalArea = value);
+    try {
+      await firestore.collection('profiles').doc(user.uid).set({
+        'preferredPhysicalArea': value,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (_) {}
+  }
+
+  List<String> _availableAreas() {
+    final values =
+        _listingDocs
+            .where((doc) {
+              final data = doc.data();
+              return (listingFormat(data) == 'physical' ||
+                      listingFormat(data) == 'competition') &&
+                  (city.isEmpty ||
+                      (data['city'] ?? '').toString().toLowerCase() ==
+                          city.toLowerCase());
+            })
+            .map((doc) => (doc.data()['area'] ?? '').toString().trim())
+            .where((value) => value.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+    if (savedPhysicalArea.isNotEmpty && !values.contains(savedPhysicalArea)) {
+      values.insert(0, savedPhysicalArea);
+    }
+    return values;
+  }
+
+  Future<void> _rememberEventCity(String value) async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return;
+    setState(() => savedEventCity = value);
+    try {
+      await firestore.collection('profiles').doc(user.uid).set({
+        'preferredEventCity': value,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (_) {}
+  }
+
   Future<void> _loadListings({bool reset = false}) async {
-    if (_loadingListings || _loadingMore || (!reset && !_hasMoreListings))
+    if (_loadingListings || _loadingMore) {
+      if (reset) _pendingListingReset = true;
       return;
+    }
+    if (!reset && !_hasMoreListings) return;
     setState(() {
       if (reset) {
         _loadingListings = true;
@@ -303,11 +353,19 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
       _listingError = null;
     });
     try {
-      Query<Map<String, dynamic>> activeQuery = firestore
-          .collection('listings')
-          .where('expires_at', isGreaterThan: Timestamp.now())
-          .orderBy('expires_at')
-          .limit(_pageSize);
+      // Events are queried by their own type so they are not buried under
+      // the first page of unrelated classes.
+      Query<Map<String, dynamic>> activeQuery =
+          selectedFormats.length == 1 && selectedFormats.contains('event')
+          ? firestore
+                .collection('listings')
+                .where('listing_type', isEqualTo: 'event')
+                .limit(_pageSize)
+          : firestore
+                .collection('listings')
+                .where('expires_at', isGreaterThan: Timestamp.now())
+                .orderBy('expires_at')
+                .limit(_pageSize);
       if (_lastListing != null) {
         activeQuery = activeQuery.startAfterDocument(_lastListing!);
       }
@@ -338,19 +396,21 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
     } on FirebaseException catch (e) {
       if (mounted) setState(() => _listingError = e.message ?? e.code);
     } finally {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _loadingListings = false;
           _loadingMore = false;
         });
+        if (_pendingListingReset) {
+          _pendingListingReset = false;
+          _loadListings(reset: true);
+        }
+      }
     }
   }
 
   @override
   void dispose() {
-    _filterScrollTimer?.cancel();
-    _formatScrollController.dispose();
-    _categoryScrollController.dispose();
     search.dispose();
     super.dispose();
   }
@@ -379,14 +439,20 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
     final words =
         '${d['title'] ?? ''} ${d['description'] ?? ''} ${d['topic'] ?? ''} ${d['about_master'] ?? ''} ${d['spoken_languages'] ?? ''} ${d['age_group'] ?? ''} $listedCategory $listedFocus ${formats[listingFormat(d)] ?? ''}'
             .toLowerCase();
-    if (category != null &&
-        listedCategory.toLowerCase() !=
-            (categoryIds[category] ?? category!).toLowerCase() &&
-        listedCategory.toLowerCase() != category!.toLowerCase()) {
-      if (listedCategory.isNotEmpty ||
-          !(categories[category]?.any((s) => words.contains(s.toLowerCase())) ??
-              false))
-        return false;
+    if (category != null) {
+      final categoryId = (categoryIds[category] ?? category!).toLowerCase();
+      final categoryLabel = category!.toLowerCase();
+      final categoryMatches =
+          listedCategory.toLowerCase() == categoryId ||
+          listedCategory.toLowerCase() == categoryLabel ||
+          listedCategory.toLowerCase().contains(categoryLabel) ||
+          (listedCategory.isNotEmpty &&
+              categoryLabel.contains(listedCategory.toLowerCase())) ||
+          (categories[category]?.any(
+                (value) => words.contains(value.toLowerCase()),
+              ) ??
+              false);
+      if (!categoryMatches) return false;
     }
     if (focus != null &&
         listedFocus.toLowerCase() != focus!.toLowerCase() &&
@@ -395,12 +461,25 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
     final format = listingFormat(d);
     if (format == 'class_request') return false;
     if (!selectedFormats.contains(format)) return false;
+    if (freeOnly &&
+        d['is_free'] != true &&
+        d['priceType'] != 'free' &&
+        d['price'] != null &&
+        d['price'] != 0) {
+      return false;
+    }
     final place = (d['city'] ?? '').toString();
+    final listingArea = (d['area'] ?? '').toString();
     if (city.isNotEmpty &&
         format != 'online' &&
         place.isNotEmpty &&
         place.toLowerCase() != city.toLowerCase())
       return false;
+    if (area.isNotEmpty &&
+        (format == 'physical' || format == 'competition') &&
+        listingArea.toLowerCase() != area.toLowerCase()) {
+      return false;
+    }
     final query = search.text.trim().toLowerCase();
     return query.isEmpty || words.contains(query);
   }
@@ -416,13 +495,20 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
         padding: const EdgeInsets.fromLTRB(16, 18, 16, 25),
         children: [
           Text(
-            category == null ? 'Learn from master near you' : category!,
+            category == null
+                ? selectedFormats.contains('competition')
+                      ? 'Competitions'
+                      : selectedFormats.contains('event')
+                      ? 'Events'
+                      : selectedFormats.contains('physical')
+                      ? 'Physical classes'
+                      : 'Online classes'
+                : category!,
             style: const TextStyle(
-              fontFamily: 'serif',
-              fontSize: 19,
+              fontSize: 20,
               height: 1.08,
               fontWeight: FontWeight.w700,
-              color: ink,
+              color: Color(0xFF1A1A1A),
             ),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -431,28 +517,43 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
           Text(
             _loadingListings
                 ? 'Loading the board…'
-                : '${listings.length} matching class${listings.length == 1 ? '' : 'es'} loaded',
+                : '${listings.length} results loaded',
             style: const TextStyle(fontSize: 12, color: muted),
           ),
           const SizedBox(height: 14),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: OutlinedButton.icon(
-              onPressed:
-                  selectedFormats.length == 1 &&
-                      selectedFormats.contains('online')
-                  ? null
-                  : openCityPicker,
-              icon: const Icon(
-                Icons.location_on_outlined,
-                color: clay,
-                size: 16,
+          Wrap(
+            spacing: 10,
+            runSpacing: 4,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              OutlinedButton.icon(
+                onPressed:
+                    selectedFormats.length == 1 &&
+                        selectedFormats.contains('online')
+                    ? null
+                    : openCityPicker,
+                icon: const Icon(Icons.location_on_outlined, size: 16),
+                label: Text(city.isEmpty ? 'All cities' : city),
+                style: _filterStyle,
               ),
-              label: Text(city.isEmpty ? 'All cities' : city),
-              style: _filterStyle,
-            ),
+              if (selectedFormats.contains('physical') ||
+                  selectedFormats.contains('competition'))
+                OutlinedButton.icon(
+                  onPressed: openAreaPicker,
+                  icon: const Icon(Icons.place_outlined, size: 16),
+                  label: Text(area.isEmpty ? 'All areas' : area),
+                  style: _filterStyle,
+                ),
+              FilterChip(
+                label: const Text('Free only'),
+                selected: freeOnly,
+                selectedColor: const Color(0xFFFFE2C1),
+                checkmarkColor: const Color(0xFF9C3F00),
+                onSelected: (value) => setState(() => freeOnly = value),
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
           if (_listingError != null)
             _Notice(
               'Could not load classes',
@@ -473,7 +574,21 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
               onPost: () => openPost(context),
             )
           else
-            ...listings.map((doc) => _Card({...doc.data(), 'id': doc.id})),
+            for (var index = 0; index < listings.length; index++) ...[
+              _CompactClassCard({
+                ...listings[index].data(),
+                'id': listings[index].id,
+              }, onDeleted: () => _loadListings(reset: true)),
+              if (index < listings.length - 1)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+                  child: Divider(
+                    height: 12,
+                    thickness: 1.5,
+                    color: Color(0xFFD7DDD7),
+                  ),
+                ),
+            ],
           if (!_loadingListings && _hasMoreListings) ...[
             const SizedBox(height: 4),
             OutlinedButton(
@@ -500,9 +615,14 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
         ..addAll(values);
       if (values.length == 1 && values.contains('online')) {
         city = '';
+        area = '';
       } else if (values.contains('physical') ||
           values.contains('competition')) {
         city = savedPhysicalCity;
+        area = savedPhysicalArea;
+      } else if (values.contains('event')) {
+        city = savedEventCity;
+        area = '';
       } else {
         city = '';
       }
@@ -532,10 +652,16 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
                           : city == name,
                       onSelected: (_) async {
                         final value = name == 'All cities' ? '' : name;
-                        setState(() => city = value);
+                        setState(() {
+                          city = value;
+                          area = '';
+                        });
                         if (selectedFormats.contains('physical') ||
                             selectedFormats.contains('competition')) {
                           await _rememberPhysicalCity(value);
+                          await _rememberPhysicalArea('');
+                        } else if (selectedFormats.contains('event')) {
+                          await _rememberEventCity(value);
                         }
                         if (sheetContext.mounted) Navigator.pop(sheetContext);
                       },
@@ -548,450 +674,686 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
       ),
     ),
   );
-  void openFilters() => showModalBottomSheet(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: Colors.transparent,
-    builder: (sheetContext) => StatefulBuilder(
-      builder: (sheetContext, refreshSheet) {
-        void update(VoidCallback action) {
-          setState(action);
-          refreshSheet(() {});
-        }
-
-        return SafeArea(
-          top: false,
-          child: Container(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.sizeOf(sheetContext).height * .83,
-            ),
-            padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-            decoration: const BoxDecoration(
-              color: paper,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Center(
-                  child: Container(
-                    width: 38,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: border,
-                      borderRadius: BorderRadius.circular(4),
+  Future<void> openAreaPicker() async {
+    final availableAreas = _availableAreas();
+    final selected = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.white,
+      builder: (sheetContext) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Wrap(
+            runSpacing: 8,
+            children: [
+              const _Label('AREA / LOCALITY'),
+              Wrap(
+                spacing: 7,
+                runSpacing: 7,
+                children: [
+                  ChoiceChip(
+                    label: const Text('All areas'),
+                    selected: area.isEmpty,
+                    onSelected: (_) => Navigator.pop(sheetContext, ''),
+                  ),
+                  ...availableAreas.map(
+                    (value) => ChoiceChip(
+                      label: Text(value),
+                      selected: area == value,
+                      onSelected: (_) => Navigator.pop(sheetContext, value),
                     ),
                   ),
-                ),
-                const SizedBox(height: 17),
-                const Text(
-                  'Filters',
-                  style: TextStyle(
-                    fontFamily: 'serif',
-                    fontSize: 26,
-                    color: ink,
-                    fontWeight: FontWeight.w700,
+                  ActionChip(
+                    avatar: const Icon(Icons.add, size: 17),
+                    label: const Text('Add area'),
+                    onPressed: () => Navigator.pop(sheetContext, '_custom'),
+                  ),
+                ],
+              ),
+              if (availableAreas.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                    'No saved areas for this city yet. Add the first one.',
+                    style: TextStyle(fontSize: 12, color: muted),
                   ),
                 ),
-                const SizedBox(height: 14),
-                Expanded(
-                  child: ListView(
-                    children: [
-                      const _Label('FORMAT'),
-                      ...formats.entries.map(
-                        (entry) => CheckboxListTile(
-                          value: selectedFormats.contains(entry.key),
-                          title: Text(entry.value),
-                          activeColor: clay,
-                          controlAffinity: ListTileControlAffinity.leading,
-                          onChanged: (_) => update(() {
-                            if (selectedFormats.contains(entry.key)) {
-                              if (selectedFormats.length > 1) {
-                                selectedFormats.remove(entry.key);
-                              }
-                            } else {
-                              selectedFormats.add(entry.key);
-                            }
-                          }),
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      const _Label('CITY'),
-                      const SizedBox(height: 8),
-                      Builder(
-                        builder: (context) {
-                          final options = <String, String>{
-                            for (final name in cities) name.toLowerCase(): name,
-                          };
-                          for (final doc in _listingDocs) {
-                            final name = (doc.data()['city'] ?? '')
-                                .toString()
-                                .trim();
-                            if (name.isNotEmpty) {
-                              options.putIfAbsent(
-                                name.toLowerCase(),
-                                () => name,
-                              );
-                            }
-                          }
-                          final cityNames = options.values.toList()
-                            ..sort(
-                              (a, b) =>
-                                  a.toLowerCase().compareTo(b.toLowerCase()),
-                            );
-                          return Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            children: ['All cities', ...cityNames].map((value) {
-                              final selected = value == 'All cities'
-                                  ? city.isEmpty
-                                  : city.toLowerCase() == value.toLowerCase();
-                              return ChoiceChip(
-                                label: Text(value),
-                                selected: selected,
-                                selectedColor: ink,
-                                backgroundColor: Colors.white,
-                                labelStyle: TextStyle(
-                                  color: selected ? paper : ink,
-                                  fontSize: 12,
-                                ),
-                                onSelected: (_) => update(
-                                  () =>
-                                      city = value == 'All cities' ? '' : value,
-                                ),
-                              );
-                            }).toList(),
-                          );
-                        },
-                      ),
-                      if (category != null) ...[
-                        const SizedBox(height: 18),
-                        _Label('${category!.toUpperCase()} — FOCUS'),
-                        const SizedBox(height: 8),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 6,
-                          children: categories[category]!
-                              .map(
-                                (value) => ChoiceChip(
-                                  label: Text(value),
-                                  selected: focus == value,
-                                  selectedColor: gold,
-                                  backgroundColor: Colors.white,
-                                  onSelected: (_) => update(
-                                    () => focus = focus == value ? null : value,
-                                  ),
-                                ),
-                              )
-                              .toList(),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => update(() {
-                          selectedFormats
-                            ..clear()
-                            ..add('online');
-                          focus = null;
-                          city = '';
-                        }),
-                        child: const Text('Reset filters'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: FilledButton(
-                        onPressed: () => Navigator.pop(sheetContext),
-                        style: FilledButton.styleFrom(backgroundColor: clay),
-                        child: const Text('Show results'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
+            ],
           ),
-        );
-      },
-    ),
-  );
+        ),
+      ),
+    );
+    if (!mounted || selected == null) return;
+    if (selected == '_custom') {
+      final controller = TextEditingController();
+      final value = await showDialog<String>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Add area / locality'),
+          content: TextField(
+            controller: controller,
+            autofocus: true,
+            textCapitalization: TextCapitalization.words,
+            maxLength: 100,
+            decoration: const InputDecoration(hintText: 'e.g. Indiranagar'),
+            onSubmitted: (text) => Navigator.pop(dialogContext, text.trim()),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () =>
+                  Navigator.pop(dialogContext, controller.text.trim()),
+              child: const Text('Use area'),
+            ),
+          ],
+        ),
+      );
+      controller.dispose();
+      if (!mounted || value == null || value.isEmpty) return;
+      setState(() => area = value);
+      await _rememberPhysicalArea(value);
+      return;
+    }
+    setState(() => area = selected);
+    await _rememberPhysicalArea(selected);
+  }
+
   @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: Colors.white,
-    body: SafeArea(
-      child: Column(
-        children: [
-          Container(
-            color: paper,
-            padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
-            child: Column(
+  Widget build(BuildContext context) =>
+      _browseFormat == null ? _buildHome(context) : _buildBrowse(context);
+
+  Widget _buildHome(BuildContext context) {
+    final name = FirebaseAuth.instance.currentUser?.displayName
+        ?.split(' ')
+        .first;
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
+          children: [
+            Row(
               children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 38,
-                      height: 38,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: gold,
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: const Text(
-                        'म',
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.asset(
+                    'logo.png',
+                    width: 42,
+                    height: 42,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+                const SizedBox(width: 11),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'LEARNING NEAR',
                         style: TextStyle(
-                          fontFamily: 'serif',
-                          fontSize: 22,
-                          color: ink,
+                          fontSize: 10,
+                          letterSpacing: 1.1,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF8B8B8B),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 9),
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      Row(
                         children: [
-                          Text(
-                            'Master Class',
-                            style: TextStyle(
-                              fontFamily: 'serif',
-                              fontSize: 19,
-                              fontWeight: FontWeight.w700,
-                              color: ink,
-                            ),
+                          const Icon(
+                            Icons.location_on,
+                            size: 16,
+                            color: Color(0xFFED792B),
                           ),
-                          Text(
-                            'MASTER CLASS',
-                            style: TextStyle(
-                              fontSize: 9,
-                              letterSpacing: 1.1,
-                              color: muted,
+                          const SizedBox(width: 3),
+                          Flexible(
+                            child: Text(
+                              savedPhysicalCity,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 17,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF1A1A1A),
+                              ),
                             ),
                           ),
                         ],
                       ),
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        const Text(
-                          'WELCOME',
-                          style: TextStyle(
-                            fontSize: 9,
-                            letterSpacing: 1.1,
-                            color: muted,
-                          ),
-                        ),
-                        Text(
-                          FirebaseAuth.instance.currentUser?.displayName ??
-                              'Guest',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w700,
-                            color: ink,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: search,
-                  onChanged: (_) => setState(() {}),
-                  decoration: InputDecoration(
-                    hintText: 'Search classes, masters, competitions',
-                    hintStyle: const TextStyle(fontSize: 13, color: muted),
-                    prefixIcon: const Icon(
-                      Icons.search,
-                      color: muted,
-                      size: 19,
-                    ),
-                    suffixIcon: search.text.isEmpty
-                        ? null
-                        : IconButton(
-                            onPressed: () {
-                              search.clear();
-                              setState(() {});
-                            },
-                            icon: const Icon(Icons.close, size: 18),
-                          ),
-                    filled: true,
-                    fillColor: cream,
-                    contentPadding: EdgeInsets.zero,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(15),
-                      borderSide: const BorderSide(color: border),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(15),
-                      borderSide: const BorderSide(color: border),
+                InkWell(
+                  onTap: () => openProfile(context),
+                  borderRadius: BorderRadius.circular(22),
+                  child: CircleAvatar(
+                    radius: 21,
+                    backgroundColor: const Color(0xFFFFE7D3),
+                    child: Text(
+                      (name ?? 'M').characters.first.toUpperCase(),
+                      style: const TextStyle(
+                        color: Color(0xFFBC591D),
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
                 ),
               ],
             ),
-          ),
-          Container(
-            height: 48,
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFFFFF5C9), Color(0xFFFFFBEB)],
+            const SizedBox(height: 18),
+            TextField(
+              readOnly: true,
+              onTap: () => _openBrowse('online'),
+              decoration: InputDecoration(
+                hintText: 'Search music, yoga, languages…',
+                prefixIcon: const Icon(Icons.search, color: Color(0xFF897362)),
+                suffixIcon: const Icon(
+                  Icons.arrow_forward_ios,
+                  size: 15,
+                  color: Color(0xFF897362),
+                ),
+                filled: true,
+                fillColor: Colors.white,
+                contentPadding: const EdgeInsets.symmetric(vertical: 16),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: Color(0xFFE9DED1)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(16),
+                  borderSide: const BorderSide(color: Color(0xFFE9DED1)),
+                ),
               ),
             ),
-            child: SizedBox(
-              height: 48,
-              child: ListView(
-                controller: _formatScrollController,
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 7,
+            const SizedBox(height: 18),
+            InkWell(
+              onTap: () => _openBrowse('online'),
+              borderRadius: BorderRadius.circular(24),
+              child: Container(
+                height: 172,
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xFFFFA648),
+                      Color(0xFFFF772F),
+                      Color(0xFFD85818),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(24),
                 ),
+                child: Row(
+                  children: [
+                    const Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'DISCOVER SOMETHING NEW',
+                            style: TextStyle(
+                              fontSize: 10,
+                              letterSpacing: 1,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          SizedBox(height: 9),
+                          Text(
+                            'Find your next\nmaster class',
+                            style: TextStyle(
+                              fontSize: 23,
+                              height: 1.05,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          SizedBox(height: 14),
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'Explore classes',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              SizedBox(width: 7),
+                              Icon(
+                                Icons.arrow_forward,
+                                size: 16,
+                                color: Colors.white,
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      width: 76,
+                      height: 76,
+                      decoration: const BoxDecoration(
+                        color: Color(0x33FFFFFF),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.auto_stories_outlined,
+                        size: 40,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 22),
+            _HomeFeaturedClasses(onExplore: () => _openBrowse('online')),
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'What do you want to learn?',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF194B42),
+                    ),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => _openBrowse('online'),
+                  child: const Text('Explore'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final tileWidth = (constraints.maxWidth - 10) / 2;
+                return Column(
+                  children: [
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: tileWidth,
+                          child: _HomeTypeTile(
+                            icon: Icons.laptop_mac_outlined,
+                            title: 'Online',
+                            subtitle: 'Learn anywhere',
+                            color: const Color(0xFFE2F3DE),
+                            onTap: () => _openBrowse('online'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        SizedBox(
+                          width: tileWidth,
+                          child: _HomeTypeTile(
+                            icon: Icons.location_on_outlined,
+                            title: 'Physical',
+                            subtitle: 'Meet nearby',
+                            color: const Color(0xFFFFE8DF),
+                            onTap: () => _openBrowse('physical'),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: tileWidth,
+                          child: _HomeTypeTile(
+                            icon: Icons.emoji_events_outlined,
+                            title: 'Competition',
+                            subtitle: 'Show your skills',
+                            color: const Color(0xFFFFF2C8),
+                            onTap: () => _openBrowse('competition'),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        SizedBox(
+                          width: tileWidth,
+                          child: _HomeTypeTile(
+                            icon: Icons.event_outlined,
+                            title: 'Events',
+                            subtitle: 'Explore events',
+                            color: const Color(0xFFE9E5FF),
+                            onTap: () => _openBrowse('event'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 12),
+            _ActiveListingCount(
+              kind: 'demo_poll',
+              builder: (activeCount) => InkWell(
+                onTap: () => openDemoClasses(context),
+                borderRadius: BorderRadius.circular(18),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD9EEF3),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.how_to_vote_outlined,
+                        color: Color(0xFF245866),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Demo Class',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF245866),
+                              ),
+                            ),
+                            Text(
+                              'Vote for the next class to try.',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFF46727B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      _CountBadge(count: activeCount),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.arrow_outward, color: Color(0xFF245866)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            _ActiveListingCount(
+              kind: 'class_request',
+              builder: (activeCount) => InkWell(
+                onTap: () => openRequests(context),
+                borderRadius: BorderRadius.circular(18),
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFECA58E),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(
+                        Icons.forum_outlined,
+                        color: Color(0xFF42352B),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Request a Class',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF42352B),
+                              ),
+                            ),
+                            Text(
+                              'Can’t find it? Ask the community.',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Color(0xFF684D43),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      _CountBadge(count: activeCount),
+                      const SizedBox(width: 8),
+                      const Icon(Icons.arrow_outward, color: Color(0xFF42352B)),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      bottomNavigationBar: _homeFooter(context),
+    );
+  }
+
+  void _openBrowse(String format) {
+    final changingFormat = _browseFormat != format;
+    _selectFormats({format});
+    setState(() {
+      _browseFormat = format;
+      if (changingFormat) {
+        category = null;
+        focus = null;
+        freeOnly = false;
+        search.clear();
+      }
+    });
+    _loadListings(reset: true);
+  }
+
+  Widget _buildBrowse(BuildContext context) {
+    final format = _browseFormat!;
+    final title = format == 'online'
+        ? 'Learn from anywhere.'
+        : format == 'physical'
+        ? 'Learn near you.'
+        : format == 'event'
+        ? 'Explore events near you.'
+        : 'Compete and grow.';
+    return Scaffold(
+      backgroundColor: Colors.white,
+      body: SafeArea(
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                border: Border(bottom: BorderSide(color: Color(0xFFECECEC))),
+              ),
+              child: Row(
                 children: [
-                  _Chip(
-                    'Online',
-                    selectedFormats.length == 1 &&
-                        selectedFormats.contains('online'),
-                    () => _selectFormats({'online'}),
-                    activeColor: const Color(0xFFF4B183),
-                    activeTextColor: const Color(0xFF5D341A),
+                  IconButton.filledTonal(
+                    onPressed: () => setState(() => _browseFormat = null),
+                    style: IconButton.styleFrom(
+                      backgroundColor: const Color(0xFFF5F5F5),
+                      foregroundColor: const Color(0xFF1A1A1A),
+                    ),
+                    icon: const Icon(Icons.arrow_back),
                   ),
-                  _Chip(
-                    'Physical',
-                    selectedFormats.length == 1 &&
-                        selectedFormats.contains('physical'),
-                    () => _selectFormats({'physical'}),
-                    activeColor: const Color(0xFFF4B183),
-                    activeTextColor: const Color(0xFF5D341A),
+                  const SizedBox(width: 8),
+                  Icon(
+                    format == 'physical'
+                        ? Icons.location_on_outlined
+                        : format == 'competition'
+                        ? Icons.emoji_events_outlined
+                        : format == 'event'
+                        ? Icons.event_outlined
+                        : Icons.laptop_mac_outlined,
+                    color: const Color(0xFFFF8C00),
+                    size: 22,
                   ),
-                  _Chip(
-                    'Demo',
-                    selectedFormats.length == 1 &&
-                        selectedFormats.contains('demo_poll'),
-                    () => _selectFormats({'demo_poll'}),
-                    activeColor: const Color(0xFFF4B183),
-                    activeTextColor: const Color(0xFF5D341A),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'EXPLORE',
+                          style: TextStyle(
+                            fontSize: 10,
+                            letterSpacing: 0.8,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF8B8B8B),
+                          ),
+                        ),
+                        Text(
+                          formats[format] ?? 'Classes',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF1A1A1A),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                  _Chip(
-                    'Competition',
-                    selectedFormats.length == 1 &&
-                        selectedFormats.contains('competition'),
-                    () => _selectFormats({'competition'}),
-                    activeColor: const Color(0xFFF4B183),
-                    activeTextColor: const Color(0xFF5D341A),
+                  _RoundIcon(
+                    icon: Icons.person_outline,
+                    onTap: () => openProfile(context),
                   ),
                 ],
               ),
             ),
-          ),
-          Container(
-            height: 140,
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFFFFF1B8), Color(0xFFFFF9E4)],
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 23,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF1A1A1A),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: search,
+                    onChanged: (_) => setState(() {}),
+                    decoration: InputDecoration(
+                      hintText: 'Search piano, French, yoga...',
+                      prefixIcon: const Icon(
+                        Icons.search,
+                        color: Color(0xFF8B8B8B),
+                      ),
+                      suffixIcon: search.text.isEmpty
+                          ? null
+                          : IconButton(
+                              onPressed: () => setState(search.clear),
+                              icon: const Icon(Icons.close, size: 18),
+                            ),
+                      filled: true,
+                      fillColor: const Color(0xFFF5F5F5),
+                      contentPadding: const EdgeInsets.symmetric(vertical: 13),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(28),
+                        borderSide: BorderSide.none,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-              border: Border.symmetric(horizontal: BorderSide(color: border)),
             ),
-            child: ListView.builder(
-              controller: _categoryScrollController,
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-              itemCount: ((categories.length + 1) / 2).ceil(),
-              itemBuilder: (context, column) {
-                final items = [
-                  'All',
-                  ...categories.keys,
-                ].skip(column * 2).take(2).toList();
-                return Column(
-                  children: items
+            SizedBox(
+              height: 44,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 20,
+                  vertical: 5,
+                ),
+                children: [
+                  _Chip(
+                    'All',
+                    category == null,
+                    () => setState(() {
+                      category = null;
+                      focus = null;
+                    }),
+                  ),
+                  ...categories.keys.map(
+                    (name) => _Chip(
+                      name,
+                      category == name,
+                      () => setState(() {
+                        category = name;
+                        focus = null;
+                      }),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (category != null && categories[category] != null)
+              SizedBox(
+                height: 38,
+                child: ListView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  children: categories[category]!
                       .map(
-                        (name) => _CategoryIcon(
-                          name: name,
-                          active: name == 'All'
-                              ? category == null
-                              : category == name,
-                          onTap: () => setState(() {
-                            category = name == 'All' ? null : name;
-                            focus = null;
-                          }),
+                        (value) => _Chip(
+                          value,
+                          focus == value,
+                          () => setState(
+                            () => focus = focus == value ? null : value,
+                          ),
                         ),
                       )
                       .toList(),
-                );
-              },
-            ),
-          ),
-          if (category != null)
-            SizedBox(
-              height: 40,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.fromLTRB(12, 4, 12, 2),
-                children: categories[category]!
-                    .map(
-                      (value) => _Chip(
-                        value,
-                        focus == value,
-                        () => setState(
-                          () => focus = focus == value ? null : value,
-                        ),
-                      ),
-                    )
-                    .toList(),
+                ),
               ),
-            ),
-          Expanded(child: _buildListingFeed()),
-        ],
-      ),
-    ),
-    bottomNavigationBar: SafeArea(
-      top: false,
-      child: Container(
-        height: 65,
-        decoration: const BoxDecoration(
-          color: paper,
-          border: Border(top: BorderSide(color: border)),
-        ),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            const _Tab(Icons.home_outlined, 'Board', true),
-            _ListingCountTab(
-              icon: Icons.volunteer_activism_outlined,
-              label: 'Requests',
-              kind: 'class_request',
-              onTap: () => openRequests(context),
-            ),
-            IconButton.filled(
-              onPressed: () => openPost(context),
-              icon: const Icon(Icons.add),
-              style: IconButton.styleFrom(
-                backgroundColor: clay,
-                foregroundColor: paper,
-              ),
-            ),
-            _ListingCountTab(
-              icon: Icons.how_to_vote_outlined,
-              label: 'Demos',
-              kind: 'demo_poll',
-              onTap: () => openDemoClasses(context),
-            ),
-            _Tab(
-              Icons.person_outline,
-              'Profile',
-              false,
-              () => openProfile(context),
-            ),
+            Expanded(child: _buildListingFeed()),
           ],
         ),
+      ),
+      bottomNavigationBar: _homeFooter(context),
+    );
+  }
+
+  Widget _homeFooter(BuildContext context) => SafeArea(
+    top: false,
+    child: Container(
+      height: 64,
+      color: Colors.white,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
+        children: [
+          _Tab(
+            Icons.home_outlined,
+            'Home',
+            _browseFormat == null,
+            () => setState(() => _browseFormat = null),
+          ),
+          IconButton.filled(
+            onPressed: () => openPost(context),
+            icon: const Icon(Icons.add),
+            style: IconButton.styleFrom(
+              backgroundColor: const Color(0xFFFF8C00),
+              foregroundColor: Colors.white,
+            ),
+          ),
+          _Tab(
+            Icons.person_outline,
+            'Profile',
+            false,
+            () => openProfile(context),
+          ),
+        ],
       ),
     ),
   );
@@ -1014,7 +1376,7 @@ class _RequestsPage extends StatelessWidget {
         foregroundColor: ink,
         title: const Text(
           'Class requests',
-          style: TextStyle(fontFamily: 'serif'),
+          style: TextStyle(fontWeight: FontWeight.w800),
         ),
         bottom: const TabBar(
           tabs: [
@@ -1081,13 +1443,17 @@ Future<void> openDemoClasses(BuildContext context) async {
 
 class _DemoClassesPage extends StatelessWidget {
   const _DemoClassesPage();
+
   @override
   Widget build(BuildContext context) => Scaffold(
     backgroundColor: Colors.white,
     appBar: AppBar(
       backgroundColor: Colors.white,
       foregroundColor: ink,
-      title: const Text('Demo classes', style: TextStyle(fontFamily: 'serif')),
+      title: const Text(
+        'Demo classes',
+        style: TextStyle(fontWeight: FontWeight.w800),
+      ),
       actions: [
         TextButton.icon(
           onPressed: () => openCommunityPost(context, 'demo_poll'),
@@ -1103,17 +1469,20 @@ class _DemoClassesPage extends StatelessWidget {
           .where('listing_kind', isEqualTo: 'demo_poll')
           .snapshots(),
       builder: (context, snapshot) {
-        if (snapshot.hasError)
+        if (snapshot.hasError) {
           return const Center(child: Text('Could not load demo classes.'));
-        if (!snapshot.hasData)
+        }
+        if (!snapshot.hasData) {
           return const Center(child: CircularProgressIndicator());
+        }
         final demos = snapshot.data!.docs
             .where((doc) => isActiveCommunityListing(doc.data()))
             .toList();
-        if (demos.isEmpty)
+        if (demos.isEmpty) {
           return const Center(
             child: Text('No demo classes yet.', style: TextStyle(color: muted)),
           );
+        }
         return ListView.builder(
           padding: const EdgeInsets.all(16),
           itemCount: demos.length,
@@ -1139,7 +1508,7 @@ Future<void> openPost(BuildContext context) async {
           children: [
             ListTile(
               leading: const Icon(Icons.school_outlined),
-              title: const Text('Post a class'),
+              title: const Text('Post a class or event'),
               onTap: () {
                 Navigator.pop(sheetContext);
                 showPostSheet(context);
@@ -1170,26 +1539,30 @@ Future<void> openPost(BuildContext context) async {
   );
 }
 
-Future<void> openClass(BuildContext context, Map<String, dynamic> data) async {
-  if (await requireLogin(context) && context.mounted) {
-    if (data['listing_kind'] == 'class_request' ||
-        data['listing_kind'] == 'demo_poll') {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) =>
-              CommunityDetailPage(listingId: data['id'].toString(), data: data),
-        ),
-      );
-    } else {
-      showMasterClassDetails(context, data);
-    }
+Future<bool> openClass(BuildContext context, Map<String, dynamic> data) async {
+  if (!await requireLogin(context) || !context.mounted) return false;
+  if (data['listing_kind'] == 'class_request' ||
+      data['listing_kind'] == 'demo_poll') {
+    return await Navigator.of(context).push<bool>(
+          MaterialPageRoute(
+            builder: (_) => CommunityDetailPage(
+              listingId: data['id'].toString(),
+              data: data,
+            ),
+          ),
+        ) ??
+        false;
   }
+  return await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => MasterClassDetailPage(data: data)),
+      ) ??
+      false;
 }
 
 final _filterStyle = OutlinedButton.styleFrom(
-  backgroundColor: Colors.white,
-  foregroundColor: ink,
-  side: const BorderSide(color: border),
+  backgroundColor: const Color(0xFFFFF4E6),
+  foregroundColor: const Color(0xFF9C3F00),
+  side: const BorderSide(color: Color(0xFFFFD6AE)),
   shape: const StadiumBorder(),
   textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
 );
@@ -1209,84 +1582,11 @@ class _Label extends StatelessWidget {
   );
 }
 
-class _CategoryIcon extends StatelessWidget {
-  const _CategoryIcon({
-    required this.name,
-    required this.active,
-    required this.onTap,
-  });
-  final String name;
-  final bool active;
-  final VoidCallback onTap;
-
-  IconData get icon => switch (name) {
-    'All' => Icons.apps_outlined,
-    'Music' => Icons.music_note_outlined,
-    'Language' => Icons.translate_outlined,
-    'Foreign Languages' => Icons.public_outlined,
-    'Yoga' => Icons.self_improvement_outlined,
-    'Meditation' => Icons.spa_outlined,
-    'Bhagavat Geeta' => Icons.menu_book_outlined,
-    'Workshop' => Icons.handyman_outlined,
-    'Arts' => Icons.palette_outlined,
-    'Curriculum' => Icons.menu_book_outlined,
-    'Trading / Stock' => Icons.trending_up_outlined,
-    'AI Tools' => Icons.auto_awesome_outlined,
-    _ => Icons.category_outlined,
-  };
-
-  @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(right: 8, bottom: 5),
-    child: InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(10),
-      child: Container(
-        width: 136,
-        height: 56,
-        padding: const EdgeInsets.symmetric(horizontal: 6),
-        decoration: BoxDecoration(
-          color: active ? const Color(0xFF008ECC) : Colors.white,
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: active ? const Color(0xFF0076AA) : border),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 17, color: active ? Colors.white : clay),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Text(
-                name,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12,
-                  height: 1.05,
-                  fontWeight: FontWeight.w700,
-                  color: active ? Colors.white : ink,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    ),
-  );
-}
-
 class _Chip extends StatelessWidget {
-  const _Chip(
-    this.text,
-    this.active,
-    this.onTap, {
-    this.activeColor = const Color(0xFF008ECC),
-    this.activeTextColor = Colors.white,
-  });
+  const _Chip(this.text, this.active, this.onTap);
   final String text;
   final bool active;
   final VoidCallback onTap;
-  final Color activeColor;
-  final Color activeTextColor;
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(right: 7),
@@ -1297,20 +1597,500 @@ class _Chip extends StatelessWidget {
         alignment: Alignment.center,
         padding: const EdgeInsets.symmetric(horizontal: 13),
         decoration: BoxDecoration(
-          color: active ? activeColor : Colors.white,
+          color: active ? const Color(0xFFFF8C00) : const Color(0xFFF5F5F5),
+          border: Border.all(
+            color: active ? const Color(0xFFFF8C00) : const Color(0xFFECECEC),
+          ),
           borderRadius: BorderRadius.circular(20),
         ),
         child: Text(
           text,
           style: TextStyle(
             fontSize: 12,
-            color: active ? activeTextColor : ink,
+            color: active ? Colors.white : const Color(0xFF1A1A1A),
             fontWeight: FontWeight.w600,
           ),
         ),
       ),
     ),
   );
+}
+
+class _RoundIcon extends StatelessWidget {
+  const _RoundIcon({required this.icon, required this.onTap});
+  final IconData icon;
+  final VoidCallback onTap;
+  @override
+  Widget build(BuildContext context) => InkWell(
+    onTap: onTap,
+    borderRadius: BorderRadius.circular(18),
+    child: Container(
+      width: 42,
+      height: 42,
+      decoration: const BoxDecoration(
+        color: Colors.white,
+        shape: BoxShape.circle,
+      ),
+      child: Icon(icon, color: const Color(0xFF194B42)),
+    ),
+  );
+}
+
+class _HomeFeaturedClasses extends StatelessWidget {
+  const _HomeFeaturedClasses({required this.onExplore});
+
+  final VoidCallback onExplore;
+
+  Widget _cover(Map<String, dynamic> data) {
+    final encoded = (data['image_base64'] ?? '').toString();
+    if (encoded.isNotEmpty) {
+      try {
+        return Image.memory(
+          base64Decode(encoded),
+          fit: BoxFit.cover,
+          width: double.infinity,
+          errorBuilder: (_, _, _) => _fallbackCover(),
+        );
+      } catch (_) {
+        return _fallbackCover();
+      }
+    }
+    final url = (data['image_url'] ?? '').toString();
+    if (url.isNotEmpty) {
+      return Image.network(
+        url,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        errorBuilder: (_, _, _) => _fallbackCover(),
+      );
+    }
+    return _fallbackCover();
+  }
+
+  Widget _fallbackCover() => const ColoredBox(
+    color: Color(0xFFFFE8D6),
+    child: Center(
+      child: Icon(
+        Icons.auto_stories_outlined,
+        size: 36,
+        color: Color(0xFFD66D27),
+      ),
+    ),
+  );
+
+  @override
+  Widget build(
+    BuildContext context,
+  ) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+    stream: firestore
+        .collection('listings')
+        .orderBy('updatedAt', descending: true)
+        .limit(30)
+        .snapshots(),
+    builder: (context, snapshot) {
+      final listings =
+          snapshot.data?.docs
+              .where((doc) {
+                final data = doc.data();
+                final format = listingFormat(data);
+                if (!const {
+                  'online',
+                  'physical',
+                  'competition',
+                  'event',
+                }.contains(format))
+                  return false;
+                final expires = data['expires_at'];
+                return expires is! Timestamp ||
+                    expires.toDate().isAfter(DateTime.now());
+              })
+              .take(6)
+              .toList() ??
+          [];
+      if (listings.isEmpty) return const SizedBox.shrink();
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Featured classes',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                ),
+              ),
+              TextButton(onPressed: onExplore, child: const Text('Explore')),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 194,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: listings.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 12),
+              itemBuilder: (context, index) {
+                final doc = listings[index];
+                final data = doc.data();
+                final format = listingFormat(data);
+                return SizedBox(
+                  width: 208,
+                  child: Material(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(18),
+                    child: InkWell(
+                      onTap: () => showMasterClassDetails(context, {
+                        ...data,
+                        'id': doc.id,
+                      }),
+                      borderRadius: BorderRadius.circular(18),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(color: const Color(0xFFE9DED1)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            ClipRRect(
+                              borderRadius: const BorderRadius.vertical(
+                                top: Radius.circular(17),
+                              ),
+                              child: SizedBox(
+                                height: 104,
+                                width: double.infinity,
+                                child: _cover(data),
+                              ),
+                            ),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(11, 9, 11, 10),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    (data['title'] ?? 'Class').toString(),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '${formats[format] ?? 'Class'} · ${data['city'] ?? 'Anywhere'}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      color: Color(0xFF897362),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 18),
+        ],
+      );
+    },
+  );
+}
+
+class _HomeTypeTile extends StatelessWidget {
+  const _HomeTypeTile({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.color,
+    required this.onTap,
+  });
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) => Material(
+    color: Colors.white,
+    elevation: 2,
+    shadowColor: const Color(0x1A5A3320),
+    shape: RoundedRectangleBorder(
+      borderRadius: BorderRadius.circular(17),
+      side: const BorderSide(color: Color(0xFFE9DED1)),
+    ),
+    child: InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(17),
+      child: Padding(
+        padding: const EdgeInsets.all(11),
+        child: Row(
+          children: [
+            Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: color,
+                borderRadius: BorderRadius.circular(11),
+              ),
+              child: Icon(icon, size: 20, color: const Color(0xFF276559)),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF194B42),
+                    ),
+                  ),
+                  if (subtitle.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 9,
+                        color: Color(0xFF829184),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, size: 18, color: Color(0xFF829184)),
+          ],
+        ),
+      ),
+    ),
+  );
+}
+
+class _CompactClassCard extends StatelessWidget {
+  const _CompactClassCard(this.data, {required this.onDeleted});
+  final Map<String, dynamic> data;
+  final VoidCallback onDeleted;
+
+  @override
+  Widget build(BuildContext context) {
+    final format = listingFormat(data);
+    final title = (data['title'] ?? 'Untitled class').toString();
+    final categoryName =
+        categories.keys
+            .where((key) => categoryIds[key] == data['category'])
+            .firstOrNull ??
+        (data['category'] ?? 'Class').toString();
+    final price = listingPrice(data);
+    final imageUrl =
+        (data['image_url'] ?? data['imageUrl'] ?? data['photoUrl'] ?? '')
+            .toString();
+    final imageBase64 = (data['image_base64'] ?? '').toString();
+
+    Widget imageHeader() {
+      if (imageBase64.isNotEmpty) {
+        return Image.memory(
+          base64Decode(imageBase64),
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stack) => const ColoredBox(
+            color: Color(0xFFEEDFCB),
+            child: Icon(Icons.broken_image_outlined, color: clay),
+          ),
+        );
+      }
+      if (imageUrl.isNotEmpty) {
+        return Image.network(
+          imageUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stack) => const ColoredBox(
+            color: Color(0xFFEEDFCB),
+            child: Icon(Icons.broken_image_outlined, color: clay),
+          ),
+        );
+      }
+      return const ColoredBox(
+        color: Color(0xFFEEDFCB),
+        child: Icon(Icons.auto_awesome, color: clay),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 4, 0, 18),
+      child: Material(
+        color: Colors.white,
+        elevation: 2,
+        shadowColor: const Color(0x1A241912),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: const BorderSide(color: Color(0x66000000), width: 1),
+        ),
+        child: InkWell(
+          onTap: () async {
+            if (await openClass(context, data)) onDeleted();
+          },
+          borderRadius: BorderRadius.circular(18),
+          child: Padding(
+            padding: const EdgeInsets.all(14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: SizedBox(
+                    width: double.infinity,
+                    height: 150,
+                    child: imageHeader(),
+                  ),
+                ),
+                const SizedBox(height: 11),
+                Row(
+                  children: [
+                    Icon(
+                      format == 'competition'
+                          ? Icons.emoji_events_outlined
+                          : format == 'event'
+                          ? Icons.event_outlined
+                          : format == 'physical'
+                          ? Icons.location_on_outlined
+                          : Icons.laptop_mac_outlined,
+                      size: 16,
+                      color: const Color(0xFF1A1A1A),
+                    ),
+                    const SizedBox(width: 5),
+                    Expanded(
+                      child: Text(
+                        '$categoryName · ${data['subcategory'] ?? ''}'
+                            .replaceAll(RegExp(r' · $'), ''),
+                        style: const TextStyle(
+                          fontSize: 11,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 9,
+                        vertical: 5,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFFFF4E6),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        price,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 7),
+                Text(
+                  title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF1A1A1A),
+                  ),
+                ),
+                if ((data['description'] ?? '').toString().isNotEmpty) ...[
+                  const SizedBox(height: 5),
+                  Text(
+                    data['description'].toString(),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      height: 1.35,
+                      color: Color(0xFF1A1A1A),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 11),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.place_outlined,
+                      size: 14,
+                      color: Color(0xFF1A1A1A),
+                    ),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        format == 'online'
+                            ? 'Online'
+                            : [
+                                (data['area'] ?? '').toString(),
+                                (data['city'] ?? 'Nearby').toString(),
+                              ].where((value) => value.isNotEmpty).join(', '),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 11),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        (data['start_date'] ?? 'Dates to be announced')
+                            .toString(),
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: Color(0xFF1A1A1A),
+                        ),
+                      ),
+                    ),
+                    FilledButton.icon(
+                      onPressed: () async {
+                        if (await openClass(context, data)) onDeleted();
+                      },
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFFFF8C00),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      icon: const Icon(Icons.arrow_forward, size: 15),
+                      label: const Text('Details'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _Card extends StatelessWidget {
@@ -1334,9 +2114,12 @@ class _Card extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 15),
       child: Material(
-        color: paper,
+        color: Colors.white,
         elevation: 2,
-        borderRadius: BorderRadius.circular(18),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: const BorderSide(color: Color(0x66000000), width: 1),
+        ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           onTap: () => openClass(context, data),
@@ -1356,10 +2139,10 @@ class _Card extends StatelessWidget {
                           )
                         : image.isEmpty
                         ? Container(
-                            color: const Color(0xFFEEDFCB),
+                            color: const Color(0xFFFFE8D6),
                             child: const Icon(
                               Icons.auto_awesome,
-                              color: clay,
+                              color: const Color(0xFFD66D27),
                               size: 52,
                             ),
                           )
@@ -1367,10 +2150,10 @@ class _Card extends StatelessWidget {
                             image,
                             fit: BoxFit.cover,
                             errorBuilder: (context, error, stack) => Container(
-                              color: const Color(0xFFEEDFCB),
+                              color: const Color(0xFFFFE8D6),
                               child: const Icon(
                                 Icons.auto_awesome,
-                                color: clay,
+                                color: const Color(0xFFD66D27),
                                 size: 52,
                               ),
                             ),
@@ -1378,7 +2161,11 @@ class _Card extends StatelessWidget {
                     Positioned(
                       left: 12,
                       top: 12,
-                      child: _Badge(formats[format] ?? 'Class', paper, clay),
+                      child: _Badge(
+                        formats[format] ?? 'Class',
+                        Colors.white,
+                        ink,
+                      ),
                     ),
                     Positioned(
                       right: 12,
@@ -1393,8 +2180,14 @@ class _Card extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _Label(
+                    Text(
                       '${categoryName.toUpperCase()}${data['subcategory'] == null ? '' : ' · ${data['subcategory']}'}',
+                      style: const TextStyle(
+                        fontSize: 10,
+                        color: Color(0xFF1A1A1A),
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 1.2,
+                      ),
                     ),
                     const SizedBox(height: 6),
                     Text(
@@ -1402,21 +2195,11 @@ class _Card extends StatelessWidget {
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
-                        fontFamily: 'serif',
                         fontSize: 17,
                         fontWeight: FontWeight.w700,
-                        color: ink,
+                        color: Color(0xFF1A1A1A),
                       ),
                     ),
-                    if ((data['about_master'] ?? '').toString().isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        data['about_master'].toString(),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 13, color: muted),
-                      ),
-                    ],
                     if (format == 'class_request' || format == 'demo_poll')
                       CommunityActivity(
                         listingId: (data['id'] ?? '').toString(),
@@ -1435,12 +2218,15 @@ class _Card extends StatelessWidget {
                             (data['start_date'] ?? 'Dates to be announced')
                                 .toString(),
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 11, color: muted),
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFF1A1A1A),
+                            ),
                           ),
                         ),
                         const Icon(
                           Icons.location_on_outlined,
-                          color: clay,
+                          color: const Color(0xFFD66D27),
                           size: 15,
                         ),
                         Text(
@@ -1523,17 +2309,11 @@ class _Notice extends StatelessWidget {
   );
 }
 
-class _ListingCountTab extends StatelessWidget {
-  const _ListingCountTab({
-    required this.icon,
-    required this.label,
-    required this.kind,
-    required this.onTap,
-  });
-  final IconData icon;
-  final String label;
+class _ActiveListingCount extends StatelessWidget {
+  const _ActiveListingCount({required this.kind, required this.builder});
   final String kind;
-  final VoidCallback onTap;
+  final Widget Function(int activeCount) builder;
+
   @override
   Widget build(BuildContext context) =>
       StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
@@ -1542,12 +2322,35 @@ class _ListingCountTab extends StatelessWidget {
             .where('listing_kind', isEqualTo: kind)
             .snapshots(),
         builder: (context, snapshot) {
-          final active = (snapshot.data?.docs ?? [])
+          final count = (snapshot.data?.docs ?? [])
               .where((doc) => isActiveCommunityListing(doc.data()))
               .length;
-          return _Tab(icon, '$label($active)', false, onTap);
+          return builder(count);
         },
       );
+}
+
+class _CountBadge extends StatelessWidget {
+  const _CountBadge({required this.count});
+  final int count;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    margin: const EdgeInsets.only(right: 4),
+    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+    decoration: BoxDecoration(
+      color: const Color(0xFF195548),
+      borderRadius: BorderRadius.circular(12),
+    ),
+    child: Text(
+      '$count',
+      style: const TextStyle(
+        color: Colors.white,
+        fontSize: 11,
+        fontWeight: FontWeight.w700,
+      ),
+    ),
+  );
 }
 
 class _Tab extends StatelessWidget {
@@ -1562,10 +2365,13 @@ class _Tab extends StatelessWidget {
     child: Column(
       mainAxisAlignment: MainAxisAlignment.center,
       children: [
-        Icon(icon, color: active ? clay : muted),
+        Icon(icon, color: active ? const Color(0xFFFF8C00) : muted),
         Text(
           label,
-          style: TextStyle(fontSize: 11, color: active ? ink : muted),
+          style: TextStyle(
+            fontSize: 11,
+            color: active ? const Color(0xFF1A1A1A) : muted,
+          ),
         ),
       ],
     ),
