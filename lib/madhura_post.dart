@@ -13,6 +13,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
 
+import 'app_theme.dart';
 import 'madhura_board.dart' as board;
 
 const spokenLanguageOptions = <String>[
@@ -69,6 +70,7 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
   final customCity = TextEditingController();
   final area = TextEditingController();
   bool isFree = true;
+  String feePeriod = 'month';
   bool saving = false;
   bool locating = false;
   String? error;
@@ -114,6 +116,7 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
       city = '_custom';
     }
     isFree = data['is_free'] == true || data['priceType'] == 'free';
+    feePeriod = data['fee_period'] == 'course' ? 'course' : 'month';
     title.text = (data['title'] ?? '').toString();
     description.text = (data['description'] ?? '').toString();
     aboutMaster.text = (data['about_master'] ?? '').toString();
@@ -133,19 +136,21 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
         (value) => value.toString(),
       ),
     );
-    if (ageGroups.isEmpty && (data['age_group'] ?? '').toString().isNotEmpty)
+    if (ageGroups.isEmpty && (data['age_group'] ?? '').toString().isNotEmpty) {
       ageGroups.add(data['age_group'].toString());
+    }
     spokenLanguages.addAll(
       (data['spoken_languages'] as List? ?? const []).map(
         (value) => value.toString(),
       ),
     );
     final time = (data['start_time'] ?? '').toString().split(':');
-    if (time.length == 2)
+    if (time.length == 2) {
       startTime = TimeOfDay(
         hour: int.tryParse(time[0]) ?? 0,
         minute: int.tryParse(time[1]) ?? 0,
       );
+    }
   }
 
   Future<void> _loadProfileDefaults() async {
@@ -196,7 +201,7 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
         uiSettings: [
           AndroidUiSettings(
             toolbarTitle: 'Crop class photo',
-            toolbarColor: board.ink,
+            toolbarColor: const Color(0xFF1A6B73),
             toolbarWidgetColor: Colors.white,
             initAspectRatio: CropAspectRatioPreset.ratio16x9,
             lockAspectRatio: false,
@@ -445,7 +450,7 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
             'title': title.text.trim(),
             'description': description.text.trim(),
             'about_master': aboutMaster.text.trim(),
-            if (encodedPhoto != null) 'image_base64': encodedPhoto,
+            'image_base64': ?encodedPhoto,
             if (encodedPhoto == null &&
                 widget.existing?['image_base64'] is String)
               'image_base64': widget.existing!['image_base64'],
@@ -454,6 +459,8 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
             'priceType': isFree ? 'free' : 'paid',
             'is_free': isFree,
             'price': isFree ? 0 : amount,
+            if (format == 'online' || format == 'physical')
+              'fee_period': isFree ? 'month' : feePeriod,
             'start_date': startDate?.toIso8601String().substring(0, 10),
             'start_time': startTime == null
                 ? null
@@ -521,13 +528,11 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
   }
 
   @override
-  Widget build(BuildContext context) => SafeArea(
-    child: Container(
-      decoration: const BoxDecoration(
-        color: board.paper,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: ListView(
+  Widget build(BuildContext context) {
+    final colors = AppPalette.of(context);
+    final text = Theme.of(context).textTheme;
+    return SafeArea(
+    child: ListView(
         padding: EdgeInsets.fromLTRB(
           16,
           12,
@@ -535,40 +540,23 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
           22 + MediaQuery.viewInsetsOf(context).bottom,
         ),
         children: [
-          Center(
-            child: Container(
-              width: 38,
-              height: 4,
-              decoration: BoxDecoration(
-                color: board.border,
-                borderRadius: BorderRadius.circular(4),
-              ),
-            ),
-          ),
-          const SizedBox(height: 14),
           Row(
             children: [
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       'SHARE WHAT YOU KNOW',
-                      style: TextStyle(
-                        fontSize: 10,
-                        letterSpacing: 1.2,
-                        color: board.muted,
+                      style: text.labelSmall?.copyWith(
+                        letterSpacing: 1.1,
+                        color: colors.muted,
                       ),
                     ),
-                    const SizedBox(height: 5),
+                    const SizedBox(height: 6),
                     Text(
                       format == 'event' ? 'Post an event' : 'Post a class',
-                      style: const TextStyle(
-                        fontFamily: 'serif',
-                        fontSize: 26,
-                        fontWeight: FontWeight.w700,
-                        color: board.ink,
-                      ),
+                      style: text.headlineSmall,
                     ),
                   ],
                 ),
@@ -599,8 +587,6 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                         (entry) => ChoiceChip(
                           label: Text(entry.value),
                           selected: format == entry.key,
-                          selectedColor: board.gold,
-                          backgroundColor: board.cream,
                           onSelected: (_) => setState(() => format = entry.key),
                         ),
                       )
@@ -614,51 +600,40 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                SizedBox(
-                  height: 38,
-                  child: ListView(
-                    scrollDirection: Axis.horizontal,
-                    children: [...board.categories.keys, 'Custom']
-                        .map(
-                          (name) => Padding(
-                            padding: const EdgeInsets.only(right: 7),
-                            child: ChoiceChip(
-                              label: Text(name),
-                              selected: category == name,
-                              selectedColor: board.ink,
-                              backgroundColor: board.cream,
-                              labelStyle: TextStyle(
-                                color: category == name
-                                    ? board.paper
-                                    : board.ink,
-                              ),
-                              onSelected: (_) => setState(() {
-                                category = name;
-                                focus = null;
-                              }),
-                            ),
-                          ),
-                        )
-                        .toList(),
-                  ),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [...board.categories.keys, 'Custom']
+                      .map(
+                        (name) => ChoiceChip(
+                          label: Text(name),
+                          selected: category == name,
+                          onSelected: (_) => setState(() {
+                            category = name;
+                            focus = null;
+                          }),
+                        ),
+                      )
+                      .toList(),
                 ),
                 if (category == 'Custom') ...[
                   const SizedBox(height: 10),
                   TextField(
                     controller: customCategory,
-                    decoration: _decoration('Custom category'),
+                    decoration: _decoration(context, 'Custom category'),
                   ),
                   const SizedBox(height: 10),
                   TextField(
                     controller: customSubcategory,
-                    decoration: _decoration('Custom sub-category · optional'),
+                    decoration: _decoration(context, 'Custom sub-category · optional'),
                   ),
                 ] else ...[
                   const SizedBox(height: 10),
                   DropdownButtonFormField<String>(
+                    isExpanded: true,
                     initialValue: focus,
                     hint: Text('Any ${category.toLowerCase()}'),
-                    decoration: _decoration('Specific focus'),
+                    decoration: _decoration(context, 'Specific focus'),
                     items: board.categories[category]!
                         .map(
                           (value) => DropdownMenuItem(
@@ -678,9 +653,9 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'Spoken language(s) used for the class',
-                  style: TextStyle(fontSize: 12, color: board.muted),
+                  style: text.bodySmall?.copyWith(color: colors.muted),
                 ),
                 const SizedBox(height: 8),
                 Wrap(
@@ -691,7 +666,6 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                         (language) => FilterChip(
                           label: Text(language),
                           selected: spokenLanguages.contains(language),
-                          selectedColor: board.gold,
                           onSelected: (selected) => setState(() {
                             if (selected) {
                               spokenLanguages.add(language);
@@ -704,23 +678,20 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                       .toList(),
                 ),
                 const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: customSpokenLanguage,
-                        textCapitalization: TextCapitalization.words,
-                        decoration: _decoration('Other language'),
-                        onSubmitted: (_) => _addCustomSpokenLanguage(),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    IconButton.filledTonal(
-                      tooltip: 'Add language',
-                      onPressed: _addCustomSpokenLanguage,
-                      icon: const Icon(Icons.add),
-                    ),
-                  ],
+                TextField(
+                  controller: customSpokenLanguage,
+                  textCapitalization: TextCapitalization.words,
+                  decoration: _decoration(context, 'Other language'),
+                  onSubmitted: (_) => _addCustomSpokenLanguage(),
+                ),
+                const SizedBox(height: 8),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextButton.icon(
+                    onPressed: _addCustomSpokenLanguage,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add language'),
+                  ),
                 ),
                 for (final language in spokenLanguages.where(
                   (value) => !spokenLanguageOptions.contains(value),
@@ -731,9 +702,9 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                         setState(() => spokenLanguages.remove(language)),
                   ),
                 const SizedBox(height: 14),
-                const Text(
+                Text(
                   'Suitable age groups · optional',
-                  style: TextStyle(fontSize: 12, color: board.muted),
+                  style: text.bodySmall?.copyWith(color: colors.muted),
                 ),
                 const SizedBox(height: 8),
                 Wrap(
@@ -744,12 +715,12 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                         (value) => FilterChip(
                           label: Text(value),
                           selected: ageGroups.contains(value),
-                          selectedColor: board.gold,
                           onSelected: (selected) => setState(() {
-                            if (selected)
+                            if (selected) {
                               ageGroups.add(value);
-                            else
+                            } else {
                               ageGroups.remove(value);
+                            }
                           }),
                         ),
                       )
@@ -764,7 +735,7 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
               children: [
                 TextField(
                   controller: title,
-                  decoration: _decoration(
+                  decoration: _decoration(context, 
                     'Class name — e.g. Tabla foundations',
                   ),
                 ),
@@ -773,7 +744,7 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                   controller: description,
                   minLines: 3,
                   maxLines: 5,
-                  decoration: _decoration(
+                  decoration: _decoration(context, 
                     'What learners cover, weekly schedule, level…',
                   ),
                 ),
@@ -782,7 +753,7 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                   controller: aboutMaster,
                   minLines: 2,
                   maxLines: 4,
-                  decoration: _decoration('About the master / teacher'),
+                  decoration: _decoration(context, 'About the master / teacher'),
                 ),
               ],
             ),
@@ -835,7 +806,7 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
               controller: previousLinks,
               keyboardType: TextInputType.url,
               maxLines: 3,
-              decoration: _decoration('YouTube or website links, one per line'),
+              decoration: _decoration(context, 'YouTube or website links, one per line'),
             ),
           ),
           _FormCard(
@@ -845,7 +816,7 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                 TextField(
                   controller: contactNumber,
                   keyboardType: TextInputType.phone,
-                  decoration: _decoration('Contact / WhatsApp number *'),
+                  decoration: _decoration(context, 'Contact / WhatsApp number *'),
                 ),
                 if (profilePhone.isNotEmpty)
                   Align(
@@ -862,12 +833,12 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                 TextField(
                   controller: sessionLink,
                   keyboardType: TextInputType.url,
-                  decoration: _decoration('Session link (Zoom, Meet, etc.)'),
+                  decoration: _decoration(context, 'Session link (Zoom, Meet, etc.)'),
                 ),
                 const SizedBox(height: 7),
-                const Text(
+                Text(
                   'These details are hidden from the class listing and shared after a learner expresses interest.',
-                  style: TextStyle(fontSize: 12, color: board.muted),
+                  style: text.bodySmall?.copyWith(color: colors.muted),
                 ),
               ],
             ),
@@ -876,24 +847,19 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
             'PRICING',
             Column(
               children: [
-                Row(
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
                   children: [
-                    Expanded(
-                      child: ChoiceChip(
-                        label: const Center(child: Text('Free')),
-                        selected: isFree,
-                        selectedColor: board.gold,
-                        onSelected: (_) => setState(() => isFree = true),
-                      ),
+                    ChoiceChip(
+                      label: const Text('Free'),
+                      selected: isFree,
+                      onSelected: (_) => setState(() => isFree = true),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: ChoiceChip(
-                        label: const Center(child: Text('Paid')),
-                        selected: !isFree,
-                        selectedColor: board.gold,
-                        onSelected: (_) => setState(() => isFree = false),
-                      ),
+                    ChoiceChip(
+                      label: const Text('Paid'),
+                      selected: !isFree,
+                      onSelected: (_) => setState(() => isFree = false),
                     ),
                   ],
                 ),
@@ -902,8 +868,40 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                   TextField(
                     controller: price,
                     keyboardType: TextInputType.number,
-                    decoration: _decoration('Price in ₹'),
+                    decoration: _decoration(
+                      context,
+                      format == 'online' || format == 'physical'
+                          ? 'Fee amount in ₹'
+                          : 'Price in ₹',
+                    ),
                   ),
+                  if (format == 'online' || format == 'physical') ...[
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Fee type',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        ChoiceChip(
+                          label: const Text('Per month'),
+                          selected: feePeriod == 'month',
+                          onSelected: (_) => setState(() => feePeriod = 'month'),
+                        ),
+                        ChoiceChip(
+                          label: const Text('One-time course fee'),
+                          selected: feePeriod == 'course',
+                          onSelected: (_) => setState(() => feePeriod = 'course'),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ],
             ),
@@ -948,7 +946,7 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                 TextField(
                   controller: durationDays,
                   keyboardType: TextInputType.number,
-                  decoration: _decoration('Duration in number of days'),
+                  decoration: _decoration(context, 'Duration in number of days'),
                 ),
               ],
             ),
@@ -961,9 +959,10 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
               Column(
                 children: [
                   DropdownButtonFormField<String>(
+                    isExpanded: true,
                     key: ValueKey(city),
                     initialValue: city.isEmpty ? null : city,
-                    decoration: _decoration(
+                    decoration: _decoration(context, 
                       format == 'physical' || format == 'competition'
                           ? 'City *'
                           : 'City (optional)',
@@ -986,7 +985,7 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                       controller: customCity,
                       textCapitalization: TextCapitalization.words,
                       maxLength: 100,
-                      decoration: _decoration('Enter city name'),
+                      decoration: _decoration(context, 'Enter city name'),
                     ),
                   ],
                   if (format == 'physical' || format == 'competition') ...[
@@ -995,7 +994,7 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                       controller: area,
                       textCapitalization: TextCapitalization.words,
                       maxLength: 100,
-                      decoration: _decoration(
+                      decoration: _decoration(context, 
                         'Area / locality * — e.g. Indiranagar',
                       ),
                     ),
@@ -1020,7 +1019,7 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                   TextField(
                     controller: mapLink,
                     keyboardType: TextInputType.url,
-                    decoration: _decoration('Google Maps link to the venue'),
+                    decoration: _decoration(context, 'Google Maps link to the venue'),
                   ),
                 ],
               ),
@@ -1028,20 +1027,22 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
           if (error != null)
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
-              child: Text(error!, style: const TextStyle(color: board.clay)),
+              child: Text(
+              error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
             ),
           FilledButton(
             onPressed: saving ? null : publish,
             style: FilledButton.styleFrom(
-              backgroundColor: board.clay,
-              minimumSize: const Size.fromHeight(49),
+              minimumSize: const Size.fromHeight(52),
             ),
             child: Text(saving ? 'Publishing…' : 'Publish listing'),
           ),
         ],
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _FormCard extends StatelessWidget {
@@ -1049,46 +1050,50 @@ class _FormCard extends StatelessWidget {
   final String title;
   final Widget child;
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(bottom: 13),
-    child: Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: board.paper,
-        border: Border.all(color: board.border),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 10,
-              letterSpacing: 1.2,
-              fontWeight: FontWeight.w700,
-              color: board.muted,
+  Widget build(BuildContext context) {
+    final colors = AppPalette.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: colors.card,
+          border: Border.all(color: colors.line),
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                letterSpacing: 1.1,
+                color: colors.muted,
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-          child,
-        ],
+            const SizedBox(height: 12),
+            child,
+          ],
+        ),
       ),
+    );
+  }
+}
+
+InputDecoration _decoration(BuildContext context, String hint) {
+  final colors = AppPalette.of(context);
+  return InputDecoration(
+    hintText: hint,
+    hintStyle: TextStyle(color: colors.muted, fontSize: 14),
+    filled: true,
+    fillColor: colors.canvas,
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: BorderSide(color: colors.line),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: BorderSide(color: colors.line),
     ),
   );
 }
-
-InputDecoration _decoration(String hint) => InputDecoration(
-  hintText: hint,
-  hintStyle: const TextStyle(color: board.muted, fontSize: 13),
-  filled: true,
-  fillColor: board.cream,
-  border: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(12),
-    borderSide: const BorderSide(color: board.border),
-  ),
-  enabledBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(12),
-    borderSide: const BorderSide(color: board.border),
-  ),
-);

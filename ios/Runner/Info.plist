@@ -67,6 +67,10 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
   <key>NSLocationWhenInUseUsageDescription</key>
-  <string>Master Class uses your location to add a class venue.</string>
+  <string>Master Class uses your location to add a class venue and to show how far a physical class is.</string>
+  <key>UIBackgroundModes</key>
+  <array>
+    <string>remote-notification</string>
+  </array>
 </dict>
 </plist>

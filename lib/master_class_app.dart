@@ -7,6 +7,7 @@ import 'firestore_database.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
+import 'app_theme.dart';
 import 'madhura_board.dart';
 import 'madhura_post.dart';
 
@@ -24,16 +25,8 @@ class MasterClassApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
     title: 'Master Class',
     debugShowCheckedModeBanner: false,
-    theme: ThemeData(
-      useMaterial3: true,
-      scaffoldBackgroundColor: Colors.white,
-      colorScheme: ColorScheme.fromSeed(seedColor: clay, surface: paper),
-      appBarTheme: const AppBarTheme(surfaceTintColor: Colors.transparent),
-      cardTheme: const CardThemeData(
-        color: paper,
-        surfaceTintColor: Colors.transparent,
-      ),
-    ),
+    theme: AppTheme.light(),
+    themeMode: ThemeMode.light,
     home: const MasterClassBoard(),
   );
 }
@@ -55,11 +48,12 @@ class _LaunchScreenState extends State<LaunchScreen>
       duration: const Duration(milliseconds: 1050),
     )..repeat();
     Future.delayed(const Duration(milliseconds: 1550), () {
-      if (mounted)
+      if (mounted) {
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (_) => const HomeScreen()),
         );
+      }
     });
   }
 
@@ -608,9 +602,9 @@ void showDetails(
 Future<bool?> showPostSheet(BuildContext context) => showModalBottomSheet<bool>(
   context: context,
   isScrollControlled: true,
-  backgroundColor: Colors.white,
+  showDragHandle: true,
   builder: (context) => const FractionallySizedBox(
-    heightFactor: .94,
+    heightFactor: .92,
     child: MasterClassPostForm(),
   ),
 );

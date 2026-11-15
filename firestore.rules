@@ -1,0 +1,402 @@
+rules_version = '2';
+
+// Master Class. Deploy with: firebase deploy --only firestore:rules
+// Signed-in users only, except public class listings, reviews, announcements,
+// and the public demo/request roster. Cloud Functions use the Admin SDK and
+// bypass these rules when they write fee reminders and announcement pushes.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function isOwner(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function isAdmin() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function listingPath(listingId) {
+      return /databases/$(database)/documents/listings/$(listingId);
+    }
+
+    function isMaster(listingId) {
+      return signedIn()
+        && get(listingPath(listingId)).data.creatorId == request.auth.uid;
+    }
+
+    function hasProfile() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/profiles/$(request.auth.uid));
+    }
+
+    function myMcId() {
+      return get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.get('mcId', '');
+    }
+
+    function validMcId(value) {
+      return value is string && value.matches('^MC[0-9]{6,}$');
+    }
+
+    function hasMyEnrollment(listingId) {
+      return hasProfile()
+        && validMcId(myMcId())
+        && exists(/databases/$(database)/documents/listings/$(listingId)/enrollments/$(myMcId()));
+    }
+
+    function hasInterest(listingId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/listings/$(listingId)/interests/$(request.auth.uid));
+    }
+
+    // The class screens load a roster with one collection read. A joined learner
+    // (enrolment or interest) may read that class's roster. Outsiders may not.
+    function canSeeRoster(listingId) {
+      return isMaster(listingId) || hasMyEnrollment(listingId) || hasInterest(listingId);
+    }
+
+    function stringField(data, field, maxSize) {
+      return !data.keys().hasAny([field])
+        || data[field] == null
+        || (data[field] is string && data[field].size() <= maxSize);
+    }
+
+    function profileShape() {
+      let data = request.resource.data;
+      return stringField(data, 'name', 120)
+        && stringField(data, 'email', 200)
+        && stringField(data, 'pictureUrl', 1000)
+        && stringField(data, 'phoneNumber', 20)
+        && stringField(data, 'city', 100)
+        && stringField(data, 'preferredPhysicalCity', 100)
+        && stringField(data, 'preferredEventCity', 100)
+        && stringField(data, 'preferredPhysicalArea', 100)
+        && stringField(data, 'expertDetails', 2000)
+        && stringField(data, 'upiId', 100)
+        && (!('role' in data) || data.role in ['Learner', 'Master'])
+        && (!('topicInterests' in data) || (data.topicInterests is list && data.topicInterests.size() <= 40))
+        && (!('fcmTokens' in data) || (data.fcmTokens is list && data.fcmTokens.size() <= 20))
+        && (!('registrationCompleted' in data) || data.registrationCompleted is bool)
+        && (!('uid' in data) || data.uid == request.auth.uid)
+        && (!('mcId' in data) || validMcId(data.mcId))
+        && (!('updatedAt' in data) || data.updatedAt is timestamp);
+    }
+
+    // A valid MC ID, once stored, cannot be replaced.
+    function mcIdUnchanged() {
+      return !('mcId' in resource.data)
+        || !(resource.data.mcId is string)
+        || !resource.data.mcId.matches('^MC[0-9]{6,}$')
+        || resource.data.mcId == request.resource.data.mcId;
+    }
+
+    function noteShape() {
+      let data = request.resource.data;
+      return data.keys().hasOnly(['title', 'body', 'kind', 'read', 'createdAt'])
+        && data.title is string
+        && data.title.size() > 0
+        && data.title.size() <= 120
+        && data.body is string
+        && data.body.size() <= 1000
+        && data.kind in ['class_reminder', 'fee_due', 'announcement']
+        && data.read == false
+        && data.createdAt is timestamp;
+    }
+
+    match /admins/{adminUid} {
+      allow get: if isOwner(adminUid);
+      allow list, create, update, delete: if false;
+    }
+
+    match /counters/{counterId} {
+      allow get: if signedIn() && counterId == 'memberId';
+      allow list: if false;
+      allow create: if signedIn()
+        && counterId == 'memberId'
+        && request.resource.data.keys().hasOnly(['next'])
+        && request.resource.data.next == 100001;
+      allow update: if signedIn()
+        && counterId == 'memberId'
+        && request.resource.data.keys().hasOnly(['next'])
+        && resource.data.keys().hasOnly(['next'])
+        && request.resource.data.next is int
+        && resource.data.next is int
+        && request.resource.data.next == resource.data.next + 1
+        && request.resource.data.next < 10000000;
+      allow delete: if false;
+    }
+
+    match /profiles/{uid} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if isOwner(uid) && profileShape();
+      allow update: if isOwner(uid) && profileShape() && mcIdUnchanged();
+      allow delete: if false;
+
+      match /notifications/{noteId} {
+        allow read: if isOwner(uid);
+        allow create: if noteShape() && (
+          isOwner(uid)
+          || (signedIn() && request.resource.data.kind == 'announcement')
+        );
+        allow update, delete: if isOwner(uid);
+      }
+
+      match /saved/{listingId} {
+        allow read: if isOwner(uid);
+        allow create, update: if isOwner(uid)
+          && request.resource.data.listingId == listingId
+          && request.resource.data.title is string
+          && request.resource.data.title.size() <= 200
+          && request.resource.data.savedAt is timestamp;
+        allow delete: if isOwner(uid);
+      }
+
+      match /receivedReviews/{reviewId} {
+        allow read: if isOwner(uid);
+        allow create, update: if signedIn()
+          && request.resource.data.authorId == request.auth.uid
+          && request.resource.data.masterId == uid
+          && request.resource.data.listingId is string
+          && reviewId == request.resource.data.listingId + '_' + request.auth.uid
+          && request.resource.data.classRating is int
+          && request.resource.data.classRating >= 1
+          && request.resource.data.classRating <= 5
+          && request.resource.data.masterRating is int
+          && request.resource.data.masterRating >= 1
+          && request.resource.data.masterRating <= 5
+          && request.resource.data.text is string
+          && request.resource.data.text.size() <= 2000;
+        allow delete: if isOwner(uid)
+          || (signedIn() && resource.data.authorId == request.auth.uid);
+      }
+    }
+
+    match /listings/{listingId} {
+      allow read: if true;
+      allow create: if signedIn()
+        && request.resource.data.creatorId == request.auth.uid
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 200;
+      allow update: if signedIn()
+        && resource.data.creatorId == request.auth.uid
+        && request.resource.data.creatorId == resource.data.creatorId
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 200;
+      allow delete: if isAdmin()
+        || (signedIn() && resource.data.creatorId == request.auth.uid);
+
+      match /interests/{userId} {
+        allow get: if isMaster(listingId) || isOwner(userId);
+        allow list: if isMaster(listingId)
+          || (signedIn() && resource.data.userId == request.auth.uid);
+        allow create, update: if isOwner(userId)
+          && request.resource.data.userId == userId
+          && request.resource.data.listingId == listingId
+          && request.resource.data.status == 'interested'
+          && request.resource.data.listingTitle is string
+          && request.resource.data.listingTitle.size() <= 200
+          && request.resource.data.userName is string
+          && request.resource.data.userName.size() <= 120;
+        allow delete: if isOwner(userId);
+      }
+
+      match /enrollments/{mcId} {
+        allow get: if isMaster(listingId)
+          || (signedIn() && validMcId(myMcId()) && mcId == myMcId())
+          || (resource != null && resource.data.userId == request.auth.uid);
+        allow list: if canSeeRoster(listingId);
+        allow create: if signedIn()
+          && validMcId(mcId)
+          && mcId == myMcId()
+          && request.resource.data.mcId == mcId
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.userName is string
+          && request.resource.data.userName.size() <= 120
+          && request.resource.data.attendees is list
+          && request.resource.data.attendees.size() > 0
+          && request.resource.data.attendees.size() <= 12;
+        allow update: if request.resource.data.mcId == resource.data.mcId
+          && request.resource.data.userId == resource.data.userId
+          && request.resource.data.attendees is list
+          && request.resource.data.attendees.size() <= 12
+          && (
+            isMaster(listingId)
+            || (signedIn() && resource.data.userId == request.auth.uid && mcId == myMcId())
+          );
+        allow delete: if isMaster(listingId)
+          || (signedIn() && resource.data.userId == request.auth.uid);
+      }
+
+      match /attendance/{sessionDate} {
+        allow read: if canSeeRoster(listingId);
+        allow create: if isMaster(listingId)
+          && sessionDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+          && request.resource.data.date == sessionDate
+          && request.resource.data.marks is map;
+        allow update: if isMaster(listingId)
+          && sessionDate.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$');
+        allow delete: if false;
+      }
+
+      match /fees/{feeId} {
+        allow read: if canSeeRoster(listingId);
+        allow create: if isMaster(listingId)
+          || (
+            signedIn()
+            && validMcId(myMcId())
+            && request.resource.data.mcId == myMcId()
+            && request.resource.data.attendeeId is string
+            && request.resource.data.attendeeId.size() > 0
+            && request.resource.data.attendeeId.size() <= 80
+            && feeId == myMcId() + '_' + request.resource.data.attendeeId
+            && request.resource.data.amountPaid == 0
+            && request.resource.data.unitAmount is int
+            && request.resource.data.unitAmount >= 0
+            && request.resource.data.feePeriod in ['month', 'course']
+          );
+        allow update: if isMaster(listingId)
+          || (
+            signedIn()
+            && resource.data.mcId == myMcId()
+            && request.resource.data.diff(resource.data).affectedKeys()
+                .hasOnly(['utr', 'utrStatus', 'claimedAmount'])
+            && request.resource.data.utr is string
+            && request.resource.data.utr.size() > 0
+            && request.resource.data.utr.size() <= 64
+            && request.resource.data.utrStatus == 'submitted'
+            && request.resource.data.claimedAmount is int
+            && request.resource.data.claimedAmount >= 0
+          );
+        allow delete: if false;
+      }
+
+      match /reviews/{userId} {
+        allow read: if true;
+        allow create, update: if isOwner(userId)
+          && request.resource.data.authorId == userId
+          && request.resource.data.listingId == listingId
+          && request.resource.data.classRating is int
+          && request.resource.data.classRating >= 1
+          && request.resource.data.classRating <= 5
+          && request.resource.data.masterRating is int
+          && request.resource.data.masterRating >= 1
+          && request.resource.data.masterRating <= 5
+          && request.resource.data.text is string
+          && request.resource.data.text.size() <= 2000
+          && (hasMyEnrollment(listingId) || hasInterest(listingId));
+        allow delete: if isOwner(userId);
+      }
+
+      match /batches/{batchId} {
+        allow read: if true;
+        allow create, update: if isMaster(listingId)
+          && request.resource.data.name is string
+          && request.resource.data.name.size() > 0
+          && request.resource.data.name.size() <= 80
+          && request.resource.data.days is list
+          && request.resource.data.days.size() > 0
+          && request.resource.data.days.size() <= 7
+          && request.resource.data.time is string
+          && request.resource.data.time.size() <= 8
+          && request.resource.data.capacity is int
+          && request.resource.data.capacity > 0
+          && request.resource.data.capacity <= 500
+          && request.resource.data.startDate is string
+          && request.resource.data.endDate is string;
+        allow delete: if isMaster(listingId);
+      }
+
+      match /announcements/{announcementId} {
+        allow read: if true;
+        allow create: if isMaster(listingId)
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 120
+          && request.resource.data.body is string
+          && request.resource.data.body.size() > 0
+          && request.resource.data.body.size() <= 2000
+          && request.resource.data.authorId == request.auth.uid
+          && request.resource.data.batchId is string
+          && request.resource.data.createdAt is string;
+        allow update, delete: if false;
+      }
+    }
+
+    match /listings_contact/{listingId} {
+      allow get: if signedIn() && (
+        resource.data.creatorId == request.auth.uid
+        || hasInterest(listingId)
+        || isAdmin()
+      );
+      allow list: if false;
+      allow create, update: if isMaster(listingId)
+        && request.resource.data.creatorId == request.auth.uid
+        && request.resource.data.contactNumber is string
+        && request.resource.data.contactNumber.size() <= 20;
+      allow delete: if isAdmin()
+        || (signedIn() && resource.data.creatorId == request.auth.uid);
+    }
+
+    match /registrations/{registrationId} {
+      allow get: if signedIn() && (
+        resource.data.userId == request.auth.uid
+        || get(listingPath(resource.data.listingId)).data.creatorId == request.auth.uid
+        || exists(/databases/$(database)/documents/community_responses/$(resource.data.listingId)/members/$(request.auth.uid))
+      );
+      allow list: if signedIn() && (
+        resource.data.userId == request.auth.uid
+        || get(listingPath(resource.data.listingId)).data.creatorId == request.auth.uid
+      );
+      allow create, update: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.listingId is string
+        && registrationId == 'response_' + request.resource.data.listingId + '_' + request.auth.uid
+        && request.resource.data.status in ['interested', 'master_ready', 'vote_0', 'creator']
+        && (request.resource.data.status != 'creator' || isMaster(request.resource.data.listingId))
+        && request.resource.data.userName is string
+        && request.resource.data.userName.size() > 0
+        && request.resource.data.userName.size() <= 100
+        && request.resource.data.userEmail is string
+        && request.resource.data.userEmail.size() <= 200;
+      allow delete: if signedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    match /community_responses/{listingId}/members/{userId} {
+      allow read: if true;
+
+      function registrationAgrees() {
+        let response = getAfter(
+          /databases/$(database)/documents/registrations/$(request.resource.data.responseId)
+        );
+        return request.resource.data.responseId == 'response_' + listingId + '_' + userId
+          && response.data.listingId == listingId
+          && response.data.userId == userId
+          && response.data.status == request.resource.data.status;
+      }
+
+      allow create, update: if signedIn()
+        && (isOwner(userId) || isMaster(listingId))
+        && request.resource.data.keys().hasOnly([
+          'listingId', 'responseId', 'userId', 'userName', 'status'
+        ])
+        && request.resource.data.listingId == listingId
+        && request.resource.data.userId == userId
+        && request.resource.data.userName is string
+        && request.resource.data.userName.size() > 0
+        && request.resource.data.userName.size() <= 100
+        && request.resource.data.status in ['interested', 'master_ready', 'vote_0']
+        && registrationAgrees();
+      allow delete: if signedIn() && (isOwner(userId) || isMaster(listingId));
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

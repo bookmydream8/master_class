@@ -32,6 +32,9 @@ migrate_working_dir/
 .pub/
 /build/
 /coverage/
+functions/node_modules/
+test/firestore/node_modules/
+*-debug.log
 
 # Symbolication related
 app.*.symbols

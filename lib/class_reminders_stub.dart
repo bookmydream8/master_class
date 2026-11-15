@@ -1,0 +1,6 @@
+/// Web and tests that do not schedule native notifications.
+Future<void> initClassReminders() async {}
+
+Future<void> scheduleClassReminders(Map<String, dynamic> listing) async {}
+
+Future<void> cancelClassReminders(String listingId) async {}

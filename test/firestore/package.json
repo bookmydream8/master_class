@@ -1,0 +1,12 @@
+{
+  "name": "master-class-rules-tests",
+  "private": true,
+  "scripts": {
+    "test": "firebase emulators:exec --config ../../firebase.json --only firestore --project demo-master-class \"node --test rules.test.js\""
+  },
+  "dependencies": {
+    "@firebase/rules-unit-testing": "^4.0.1",
+    "firebase": "^11.9.0",
+    "firebase-tools": "^14.20.0"
+  }
+}

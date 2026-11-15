@@ -18,6 +18,11 @@ analyzer:
     - windows/**
     - macos/**
     - linux/**
+  errors:
+    # Flutter 3.47 deprecates package:flutter/material.dart in favor of
+    # package:material_ui, which is not shipped in the SDK. The Material
+    # library remains the shared Android and iOS UI.
+    deprecated_member_use: ignore
 
 linter:
   # The lint rules applied to this project can be customized in the
