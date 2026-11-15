@@ -194,6 +194,7 @@ class ClassRosterStore {
             feePeriod: feePeriod,
           );
     }
+    try {
     final root = firestore.collection('listings').doc(listingId);
     final enrollmentDocs = await root.collection('enrollments').get();
     final attendanceDocs = await root.collection('attendance').get();
@@ -243,6 +244,17 @@ class ClassRosterStore {
       feeAmount: feeAmount,
       feePeriod: feePeriod,
     );
+    } on FirebaseException catch (error) {
+      if (error.code != 'permission-denied') rethrow;
+      return ClassRoster(
+        enrollments: const [],
+        sessionDates: _recentDates(),
+        marks: const {},
+        fees: const [],
+        feeAmount: feeAmount,
+        feePeriod: feePeriod,
+      );
+    }
   }
 
   Future<void> saveEnrollment({

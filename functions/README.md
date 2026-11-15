@@ -15,7 +15,24 @@ These functions send fee reminders and class announcements. The app still record
 4. Android already applies the Google services plugin. iOS needs the `GoogleService-Info.plist` you download from the same project, and Push Notifications plus Background Modes → Remote notifications turned on in Xcode.
 5. The app asks for notification permission and stores the device token on `profiles/{uid}.fcmTokens`.
 
-## Deploy
+## Deploy the security rules
+
+The rules live in `firestore.rules` and `firebase.json` points at that file. They cover listings, profiles (including an immutable `mcId`), the MC ID counter, enrolments, attendance, fees, reviews, batches, announcements, and the community collections. Publishing them does not change the Flutter app.
+
+From the repository root, after `firebase login` and `firebase use --add`:
+
+```bash
+firebase deploy --only firestore:rules
+```
+
+Check the rules locally first, from `test/firestore`:
+
+```bash
+npm install
+npm test
+```
+
+## Deploy the functions
 
 ```bash
 cd functions
