@@ -114,15 +114,15 @@ class CourseCard extends StatelessWidget {
                         if (live)
                           const _Pill(
                             label: 'LIVE',
-                            background: Color(0xFFE11D48),
-                            foreground: Colors.white,
+                            background: Color(0xFFFCE8EC),
+                            foreground: Color(0xFF9F1239),
                           ),
                         if (live && fresh) const SizedBox(width: 6),
                         if (fresh)
-                          _Pill(
+                          const _Pill(
                             label: 'NEW',
-                            background: const Color(0xFFF59E0B),
-                            foreground: const Color(0xFF451A03),
+                            background: Color(0xFFFBF1E6),
+                            foreground: Color(0xFF92400E),
                           ),
                       ],
                     ),
@@ -312,7 +312,7 @@ class _PromoCarouselState extends State<PromoCarousel> {
             onPageChanged: (value) => setState(() => page = value),
             itemBuilder: (context, index) {
               final banner = banners[index];
-              final colors = banner.style.gradient;
+              final ink = banner.style.ink;
               return Padding(
                 padding: const EdgeInsets.only(right: 12),
                 child: Material(
@@ -326,7 +326,7 @@ class _PromoCarouselState extends State<PromoCarousel> {
                         gradient: LinearGradient(
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
-                          colors: colors,
+                          colors: banner.style.gradient,
                         ),
                       ),
                       child: Padding(
@@ -337,7 +337,7 @@ class _PromoCarouselState extends State<PromoCarousel> {
                             Text(
                               banner.kicker,
                               style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                color: Colors.white.withValues(alpha: 0.9),
+                                color: ink,
                                 letterSpacing: 1.1,
                               ),
                             ),
@@ -345,22 +345,22 @@ class _PromoCarouselState extends State<PromoCarousel> {
                             Text(
                               banner.title,
                               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                color: Colors.white,
+                                color: ink,
                                 height: 1.15,
                               ),
                             ),
                             const Spacer(),
-                            const Row(
+                            Row(
                               children: [
                                 Text(
                                   'See classes',
                                   style: TextStyle(
-                                    color: Colors.white,
+                                    color: ink,
                                     fontWeight: FontWeight.w700,
                                   ),
                                 ),
-                                SizedBox(width: 6),
-                                Icon(Icons.arrow_forward, color: Colors.white, size: 18),
+                                const SizedBox(width: 6),
+                                Icon(Icons.arrow_forward, color: ink, size: 18),
                               ],
                             ),
                           ],
@@ -715,7 +715,7 @@ class LearnYourWay extends StatelessWidget {
                 title: tile.title,
                 countLabel: '$count $noun',
                 icon: tile.icon,
-                gradient: tile.style.gradient,
+                style: tile.style,
                 onTap: () => onOpen(tile.format),
               );
             },
@@ -731,14 +731,14 @@ class _FormatTile extends StatelessWidget {
     required this.title,
     required this.countLabel,
     required this.icon,
-    required this.gradient,
+    required this.style,
     required this.onTap,
   });
 
   final String title;
   final String countLabel;
   final IconData icon;
-  final List<Color> gradient;
+  final CategoryStyle style;
   final VoidCallback onTap;
 
   @override
@@ -757,11 +757,11 @@ class _FormatTile extends StatelessWidget {
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: gradient,
+                colors: style.gradient,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: gradient.last.withValues(alpha: 0.28),
+                  color: style.ink.withValues(alpha: 0.08),
                   blurRadius: 16,
                   offset: const Offset(0, 8),
                 ),
@@ -772,18 +772,16 @@ class _FormatTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(icon, color: Colors.white, size: 36),
+                  Icon(icon, color: style.ink, size: 36),
                   const Spacer(),
                   Text(
                     title,
-                    style: text.titleMedium?.copyWith(color: Colors.white),
+                    style: text.titleMedium?.copyWith(color: style.ink),
                   ),
                   const SizedBox(height: 2),
                   Text(
                     countLabel,
-                    style: text.bodySmall?.copyWith(
-                      color: Colors.white.withValues(alpha: 0.9),
-                    ),
+                    style: text.bodySmall?.copyWith(color: style.ink),
                   ),
                   const SizedBox(height: 8),
                   Align(
@@ -792,12 +790,12 @@ class _FormatTile extends StatelessWidget {
                       width: 28,
                       height: 28,
                       decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.22),
+                        color: style.ink.withValues(alpha: 0.1),
                         shape: BoxShape.circle,
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.arrow_forward_rounded,
-                        color: Colors.white,
+                        color: style.ink,
                         size: 16,
                       ),
                     ),
@@ -908,12 +906,13 @@ class _DemoCard extends StatelessWidget {
                           child: Container(
                             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                             decoration: BoxDecoration(
-                              color: style.ink,
+                              color: style.tint,
                               borderRadius: BorderRadius.circular(20),
+                              border: Border.all(color: style.ink.withValues(alpha: 0.35)),
                             ),
                             child: Text(
                               startCountdown(data),
-                              style: text.labelSmall?.copyWith(color: Colors.white),
+                              style: text.labelSmall?.copyWith(color: style.ink),
                             ),
                           ),
                         ),
@@ -956,8 +955,8 @@ class _DemoCard extends StatelessWidget {
                           style: FilledButton.styleFrom(
                             minimumSize: const Size.fromHeight(36),
                             padding: const EdgeInsets.symmetric(horizontal: 12),
-                            backgroundColor: style.gradient.first,
-                            foregroundColor: Colors.white,
+                            backgroundColor: style.tint,
+                            foregroundColor: style.ink,
                           ),
                           child: const Text('Book free demo'),
                         ),

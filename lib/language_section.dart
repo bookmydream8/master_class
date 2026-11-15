@@ -4,7 +4,28 @@ import 'app_theme.dart';
 import 'category_style.dart';
 import 'seed/bangalore_demo.dart';
 
-/// Prominent Home rail for the languages people ask to speak.
+class _LanguageCard {
+  const _LanguageCard(this.english, this.native, this.styleId);
+  final String english;
+  final String native;
+  final String styleId;
+}
+
+const _languageCards = <_LanguageCard>[
+  _LanguageCard('English', 'English', 'language'),
+  _LanguageCard('Hindi', 'हिन्दी', 'language'),
+  _LanguageCard('Kannada', 'ಕನ್ನಡ', 'language'),
+  _LanguageCard('Tamil', 'தமிழ்', 'language'),
+  _LanguageCard('Telugu', 'తెలుగు', 'language'),
+  _LanguageCard('Malayalam', 'മലയാളം', 'language'),
+  _LanguageCard('French', 'Français', 'foreign_languages'),
+  _LanguageCard('German', 'Deutsch', 'foreign_languages'),
+  _LanguageCard('Spanish', 'Español', 'foreign_languages'),
+  _LanguageCard('Japanese', '日本語', 'foreign_languages'),
+  _LanguageCard('Korean', '한국어', 'foreign_languages'),
+];
+
+/// Compact language rail. Light cards with a thin border, not gradient tiles.
 class LanguageSection extends StatelessWidget {
   const LanguageSection({super.key, required this.onOpen, required this.listings});
 
@@ -15,14 +36,6 @@ class LanguageSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final text = Theme.of(context).textTheme;
     final colors = AppPalette.of(context);
-    final styles = [
-      categoryStyleForId('language'),
-      categoryStyleForId('foreign_languages'),
-      categoryStyleForId('yoga'),
-      categoryStyleForId('arts'),
-      categoryStyleForId('music'),
-      categoryStyleForId('workshop'),
-    ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -34,49 +47,66 @@ class LanguageSection extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         SizedBox(
-          height: 108,
+          height: 78,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            itemCount: speakLanguages.length,
+            itemCount: _languageCards.length,
             separatorBuilder: (_, _) => const SizedBox(width: 10),
             itemBuilder: (context, index) {
-              final language = speakLanguages[index];
-              final style = styles[index % styles.length];
+              final card = _languageCards[index];
+              final style = categoryStyleForId(card.styleId);
               final count = listings
-                  .where((item) => listingMatchesLanguage(item, language))
+                  .where((item) => listingMatchesLanguage(item, card.english))
                   .length;
               return Material(
-                color: Colors.transparent,
+                color: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
+                  side: BorderSide(color: style.ink.withValues(alpha: 0.38)),
+                ),
                 child: InkWell(
-                  onTap: () => onOpen(language),
+                  onTap: () => onOpen(card.english),
                   borderRadius: BorderRadius.circular(18),
                   child: Ink(
-                    width: 132,
+                    width: 176,
                     decoration: BoxDecoration(
+                      color: style.tint,
                       borderRadius: BorderRadius.circular(18),
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: style.gradient,
-                      ),
                     ),
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+                      child: Row(
                         children: [
-                          const Icon(Icons.translate_rounded, color: Colors.white, size: 22),
-                          const Spacer(),
-                          Text(
-                            language,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: text.titleSmall?.copyWith(color: Colors.white),
+                          Icon(
+                            Icons.record_voice_over_outlined,
+                            color: style.ink,
+                            size: 18,
                           ),
-                          Text(
-                            count == 1 ? '1 class' : '$count classes',
-                            style: text.labelSmall?.copyWith(
-                              color: Colors.white.withValues(alpha: 0.9),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  card.native,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: text.titleSmall?.copyWith(color: style.ink),
+                                ),
+                                Text(
+                                  card.english == card.native
+                                      ? '$count ${count == 1 ? 'class' : 'classes'}'
+                                      : card.english,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: text.bodySmall?.copyWith(color: colors.muted),
+                                ),
+                                Text(
+                                  'Beginner',
+                                  style: text.labelSmall?.copyWith(color: style.ink),
+                                ),
+                              ],
                             ),
                           ),
                         ],
