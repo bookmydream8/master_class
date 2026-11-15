@@ -971,8 +971,6 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
         const SizedBox(height: 16),
         PromoCarousel(onOpen: _openBrowse),
         const SizedBox(height: 22),
-        LanguageSection(listings: _homeCatalogue(), onOpen: _openLanguage),
-        const SizedBox(height: 22),
         LearnYourWay(listings: _homeCatalogue(), onOpen: _openBrowse),
         Align(
           alignment: Alignment.centerLeft,
@@ -987,6 +985,8 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
           listings: _homeCatalogue(),
           onOpen: (data) => showMasterClassDetails(context, data),
         ),
+        const SizedBox(height: 22),
+        LanguageSection(listings: _homeCatalogue(), onOpen: _openLanguage),
         const SizedBox(height: 18),
         AppSectionHeader(title: 'Browse by subject'),
         const SizedBox(height: 12),
@@ -1663,7 +1663,7 @@ class _Chip extends StatelessWidget {
             constraints: const BoxConstraints(minHeight: 40),
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
-              color: active ? colors.accent : colors.card,
+              color: active ? colors.accentSoft : colors.card,
               border: Border.all(color: active ? colors.accent : colors.line),
               borderRadius: BorderRadius.circular(20),
             ),
@@ -1671,7 +1671,7 @@ class _Chip extends StatelessWidget {
               text,
               style: TextStyle(
                 fontSize: 13,
-                color: active ? colors.onAccent : colors.ink,
+                color: active ? colors.onAccentSoft : colors.ink,
                 fontWeight: FontWeight.w600,
               ),
             ),
