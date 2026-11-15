@@ -7,6 +7,9 @@ import 'package:flutter_timezone/flutter_timezone.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'city_topics.dart';
 import 'firestore_database.dart';
 import 'notification_inbox.dart';
 import 'reminder_times.dart';
@@ -29,10 +32,14 @@ Future<void> initClassReminders() async {
     settings: const InitializationSettings(android: android, iOS: apple),
   );
   await _plugin
-      .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+      .resolvePlatformSpecificImplementation<
+        AndroidFlutterLocalNotificationsPlugin
+      >()
       ?.requestNotificationsPermission();
   await _plugin
-      .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
+      .resolvePlatformSpecificImplementation<
+        IOSFlutterLocalNotificationsPlugin
+      >()
       ?.requestPermissions(alert: true, badge: true, sound: true);
   _ready = true;
   await _saveFcmToken();
@@ -49,6 +56,13 @@ Future<void> _saveFcmToken() async {
     await firestore.collection('profiles').doc(user.uid).set({
       'fcmTokens': FieldValue.arrayUnion([token]),
     }, SetOptions(merge: true));
+    final profile = (await firestore.collection('profiles').doc(user.uid).get())
+        .data();
+    await syncCityTopics(
+      city: (profile?['city'] ?? '').toString(),
+      eventCity: (profile?['preferredEventCity'] ?? profile?['city'] ?? '')
+          .toString(),
+    );
     messaging.onTokenRefresh.listen((next) {
       firestore.collection('profiles').doc(user.uid).set({
         'fcmTokens': FieldValue.arrayUnion([next]),
@@ -87,7 +101,8 @@ Future<void> scheduleClassReminders(Map<String, dynamic> listing) async {
     android: AndroidNotificationDetails(
       'class_reminders',
       'Class reminders',
-      channelDescription: 'A day before class, and again shortly before it starts.',
+      channelDescription:
+          'A day before class, and again shortly before it starts.',
       importance: Importance.high,
       priority: Priority.high,
     ),
@@ -108,7 +123,11 @@ Future<void> scheduleClassReminders(Map<String, dynamic> listing) async {
       androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
       payload: listingId,
     );
-    await postInboxNote(title: 'Class reminder', body: body, kind: 'class_reminder');
+    await postInboxNote(
+      title: 'Class reminder',
+      body: body,
+      kind: 'class_reminder',
+    );
   }
 }
 
@@ -116,4 +135,50 @@ Future<void> cancelClassReminders(String listingId) async {
   if (!_ready) return;
   await _plugin.cancel(id: _idFor(listingId, 'day'));
   await _plugin.cancel(id: _idFor(listingId, 'soon'));
+}
+
+const _cityTopicKey = 'fcm_topic_city';
+const _eventTopicKey = 'fcm_topic_event_city';
+
+/// Subscribes this device to the city topics used by the daily event reminder.
+/// Pass only the city that changed; a null argument leaves that topic as it is.
+Future<void> syncCityTopics({String? city, String? eventCity}) async {
+  if (kIsWeb) return;
+  try {
+    final messaging = FirebaseMessaging.instance;
+    final prefs = await SharedPreferences.getInstance();
+    if (city != null) {
+      await _swapTopic(messaging, prefs, _cityTopicKey, cityTopicName(city));
+    }
+    if (eventCity != null) {
+      await _swapTopic(
+        messaging,
+        prefs,
+        _eventTopicKey,
+        cityTopicName(eventCity),
+      );
+    }
+  } catch (error) {
+    debugPrint('City topic was not updated: $error');
+  }
+}
+
+Future<void> _swapTopic(
+  FirebaseMessaging messaging,
+  SharedPreferences prefs,
+  String key,
+  String? next,
+) async {
+  final previous = prefs.getString(key);
+  if (previous != null && previous.isNotEmpty && previous != next) {
+    await messaging.unsubscribeFromTopic(previous);
+  }
+  if (next != null && next.isNotEmpty && next != previous) {
+    await messaging.subscribeToTopic(next);
+  }
+  if (next == null || next.isEmpty) {
+    await prefs.remove(key);
+  } else {
+    await prefs.setString(key, next);
+  }
 }

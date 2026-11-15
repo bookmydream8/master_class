@@ -202,7 +202,16 @@ service cloud.firestore {
           && request.resource.data.listingTitle is string
           && request.resource.data.listingTitle.size() <= 200
           && request.resource.data.userName is string
-          && request.resource.data.userName.size() <= 120;
+          && request.resource.data.userName.size() <= 120
+          && stringField(request.resource.data, 'userEmail', 200)
+          && stringField(request.resource.data, 'contactNumber', 20)
+          && stringField(request.resource.data, 'createdAt', 40)
+          && (
+            !request.resource.data.keys().hasAny(['mcId'])
+            || request.resource.data.mcId == null
+            || request.resource.data.mcId == ''
+            || validMcId(request.resource.data.mcId)
+          );
         allow delete: if isOwner(userId);
       }
 
@@ -328,17 +337,26 @@ service cloud.firestore {
       }
     }
 
+    // Phone, email, and UPI stay off the public listing. A learner can read
+    // them after they record their own interest, and an enrolled learner can
+    // read them to pay. Everyone else cannot.
     match /listings_contact/{listingId} {
       allow get: if signedIn() && (
         resource.data.creatorId == request.auth.uid
         || hasInterest(listingId)
+        || hasMyEnrollment(listingId)
         || isAdmin()
       );
       allow list: if false;
       allow create, update: if isMaster(listingId)
         && request.resource.data.creatorId == request.auth.uid
         && request.resource.data.contactNumber is string
-        && request.resource.data.contactNumber.size() <= 20;
+        && request.resource.data.contactNumber.size() <= 20
+        && stringField(request.resource.data, 'masterName', 120)
+        && stringField(request.resource.data, 'masterEmail', 200)
+        && stringField(request.resource.data, 'masterPhone', 20)
+        && stringField(request.resource.data, 'upiId', 100)
+        && stringField(request.resource.data, 'sessionLink', 500);
       allow delete: if isAdmin()
         || (signedIn() && resource.data.creatorId == request.auth.uid);
     }

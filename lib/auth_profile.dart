@@ -14,7 +14,9 @@ import 'package:image_picker/image_picker.dart';
 
 import 'app_theme.dart';
 import 'category_style.dart';
+import 'class_reminders.dart';
 import 'class_reviews.dart';
+import 'profile_photo.dart';
 import 'class_roster_pages.dart';
 import 'learner_badges.dart';
 import 'notification_inbox.dart';
@@ -77,6 +79,12 @@ class _LoginPageState extends State<LoginPage> {
       } catch (e) {
         debugPrint('MC ID was not assigned: $e');
       }
+      try {
+        await adoptProviderPhoto(signedIn.user!);
+      } catch (e) {
+        debugPrint('Provider photo was not saved: $e');
+      }
+      if (mounted) await offerMissingProfilePhoto(context);
       final profile = await firestore
           .collection('profiles')
           .doc(signedIn.user!.uid)
@@ -204,11 +212,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
 
   Future<void> choosePhoto() async {
     try {
-      final photo = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1000,
-        imageQuality: 82,
-      );
+      final photo = await pickAndCropProfilePhoto(context);
       if (photo != null && mounted) setState(() => selectedPhoto = photo);
     } catch (e) {
       if (mounted) setState(() => error = 'Could not open your photos: $e');
@@ -249,6 +253,7 @@ class _RegistrationPageState extends State<RegistrationPage> {
         'registrationCompleted': true,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+      await syncCityTopics(city: city.text.trim(), eventCity: city.text.trim());
       if (mounted) Navigator.pop(context);
     } on FirebaseException catch (e) {
       if (mounted) setState(() => error = e.message ?? e.code);
@@ -262,19 +267,31 @@ class _RegistrationPageState extends State<RegistrationPage> {
     final colors = AppPalette.of(context);
     final text = Theme.of(context).textTheme;
     return Scaffold(
-    appBar: AppBar(title: const Text('Complete your profile')),
-    body: SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.all(20),
-        children: [
-          Text('Welcome to Master Class', style: text.headlineSmall),
-          const SizedBox(height: 8),
-          Text(
-            'Your Google name and photo are used automatically. Add the details below to personalise classes.',
-            style: text.bodyMedium?.copyWith(color: colors.muted),
-          ),
-          const SizedBox(height: 20),
-          if ((user.photoURL ?? '').isEmpty || selectedPhoto != null)
+      appBar: AppBar(title: const Text('Complete your profile')),
+      body: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            Text('Welcome to Master Class', style: text.headlineSmall),
+            const SizedBox(height: 8),
+            Text(
+              (user.photoURL ?? '').isEmpty
+                  ? 'Add a photo so people recognise you, then the details below.'
+                  : 'Your Google name and photo are saved. You can change the photo, then add the details below.',
+              style: text.bodyMedium?.copyWith(color: colors.muted),
+            ),
+            const SizedBox(height: 20),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: ProfileAvatar(
+                url: user.photoURL ?? '',
+                name: user.displayName ?? '',
+                radius: 36,
+                localPhoto: selectedPhoto == null
+                    ? null
+                    : File(selectedPhoto!.path),
+              ),
+            ),
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
@@ -282,45 +299,47 @@ class _RegistrationPageState extends State<RegistrationPage> {
                 icon: const Icon(Icons.add_a_photo_outlined),
                 label: Text(
                   selectedPhoto == null
-                      ? 'Add profile photo'
+                      ? 'Add or change photo'
                       : 'Photo selected',
                 ),
               ),
             ),
-          TextField(
-            controller: phone,
-            keyboardType: TextInputType.phone,
-            maxLength: 20,
-            decoration: const InputDecoration(
-              labelText: 'Phone number *',
-              helperText: 'Private to your profile.',
+            TextField(
+              controller: phone,
+              keyboardType: TextInputType.phone,
+              maxLength: 20,
+              decoration: const InputDecoration(
+                labelText: 'Phone number *',
+                helperText: 'Private to your profile.',
+              ),
             ),
-          ),
-          TextField(
-            controller: city,
-            textCapitalization: TextCapitalization.words,
-            maxLength: 100,
-            decoration: const InputDecoration(labelText: 'City *'),
-          ),
-          const SizedBox(height: 12),
-          if (error != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 12),
-              child:             Text(
-              error!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            TextField(
+              controller: city,
+              textCapitalization: TextCapitalization.words,
+              maxLength: 100,
+              decoration: const InputDecoration(labelText: 'City *'),
             ),
+            const SizedBox(height: 12),
+            if (error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(
+                  error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
+            const SizedBox(height: 20),
+            FilledButton(
+              onPressed: saving ? null : save,
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(52),
+              ),
+              child: Text(saving ? 'Saving…' : 'Continue'),
             ),
-          const SizedBox(height: 20),
-          FilledButton(
-            onPressed: saving ? null : save,
-            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-            child: Text(saving ? 'Saving…' : 'Continue'),
-          ),
-        ],
+          ],
+        ),
       ),
-    ),
-  );
+    );
   }
 }
 
@@ -348,6 +367,7 @@ class _ProfilePageState extends State<ProfilePage> {
   bool saving = false;
   bool editing = false;
   String? error;
+  String storedPhoto = '';
   XFile? selectedPhoto;
   User get user => FirebaseAuth.instance.currentUser!;
 
@@ -393,8 +413,9 @@ class _ProfilePageState extends State<ProfilePage> {
       try {
         mcId = await ensureMemberId(current);
       } catch (_) {}
-      final data = (await firestore.collection('profiles').doc(current.uid).get())
-          .data();
+      final data =
+          (await firestore.collection('profiles').doc(current.uid).get())
+              .data();
       expertDetails.text = (data?['expertDetails'] ?? '').toString();
       profileCity = (data?['city'] ?? '').toString();
       profilePhone = (data?['phoneNumber'] ?? '').toString();
@@ -405,12 +426,21 @@ class _ProfilePageState extends State<ProfilePage> {
       final storedRole = (data?['role'] ?? '').toString();
       role = storedRole == 'Master' ? 'Master' : 'Learner';
       upiField.text = (data?['upiId'] ?? '').toString();
+      storedPhoto = (data?['pictureUrl'] ?? current.photoURL ?? '').toString();
+      if (storedPhoto.isEmpty) {
+        try {
+          await adoptProviderPhoto(current);
+          storedPhoto = (current.photoURL ?? '').trim();
+        } catch (_) {}
+      }
       final rawInterests = data?['topicInterests'];
       topicInterests
         ..clear()
         ..addAll(
           rawInterests is List
-              ? rawInterests.map((item) => item.toString()).where((item) => item.isNotEmpty)
+              ? rawInterests
+                    .map((item) => item.toString())
+                    .where((item) => item.isNotEmpty)
               : const [],
         );
     } catch (_) {
@@ -421,18 +451,29 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> choosePhoto() async {
-    try {
-      final photo = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1000,
-        imageQuality: 82,
+    if (!signedIn) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sign in to change your photo.')),
       );
-      if (photo != null && mounted) {
-        setState(() => selectedPhoto = photo);
+      return;
+    }
+    try {
+      final photo = await pickAndCropProfilePhoto(context);
+      if (photo == null || !mounted) return;
+      setState(() {
+        selectedPhoto = photo;
+        error = null;
+      });
+      final url = await uploadProfilePhoto(user, photo);
+      if (mounted) {
+        setState(() {
+          storedPhoto = url;
+          selectedPhoto = null;
+        });
       }
     } catch (e) {
       if (mounted) {
-        setState(() => error = 'Could not open your photos: $e');
+        setState(() => error = 'Could not update your photo: $e');
       }
     }
   }
@@ -457,7 +498,9 @@ class _ProfilePageState extends State<ProfilePage> {
     final profileRef = firestore.collection('profiles').doc(user.uid);
     final write = profileRef.set({
       'name': user.displayName ?? '',
-      'pictureUrl': user.photoURL ?? '',
+      'pictureUrl': storedPhoto.isNotEmpty
+          ? storedPhoto
+          : (user.photoURL ?? ''),
       'expertDetails': expertDetails.text.trim(),
       'email': user.email,
       'phoneNumber': profilePhone,
@@ -476,9 +519,13 @@ class _ProfilePageState extends State<ProfilePage> {
         }
       }),
     );
-    if (selectedPhoto != null) {
-      unawaited(_uploadSelectedPhoto(selectedPhoto!));
-    }
+    unawaited(() async {
+      try {
+        await syncCityTopics(city: profileCity);
+      } catch (error) {
+        debugPrint('City topic was not updated: $error');
+      }
+    }());
     setState(() {
       saving = false;
       editing = false;
@@ -490,30 +537,6 @@ class _ProfilePageState extends State<ProfilePage> {
     );
   }
 
-  Future<void> _uploadSelectedPhoto(XFile photo) async {
-    try {
-      final photoRef = FirebaseStorage.instance.ref().child(
-        'profile_photos/${user.uid}/avatar.jpg',
-      );
-      await photoRef.putFile(File(photo.path));
-      final pictureUrl = await photoRef.getDownloadURL();
-      await user.updatePhotoURL(pictureUrl);
-      await firestore.collection('profiles').doc(user.uid).set({
-        'pictureUrl': pictureUrl,
-        'updatedAt': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-      if (mounted) setState(() => selectedPhoto = null);
-    } catch (e) {
-      debugPrint('Profile photo upload failed: $e');
-      if (mounted) {
-        setState(
-          () =>
-              error = 'Profile details saved, but the photo could not upload.',
-        );
-      }
-    }
-  }
-
   String get displayName =>
       signedIn ? (user.displayName ?? 'Google account') : 'Demo Member';
 
@@ -521,7 +544,10 @@ class _ProfilePageState extends State<ProfilePage> {
       ? (user.email ?? 'No email available')
       : 'demo.member@masterclass.app';
 
-  String get photoUrl => signedIn ? (user.photoURL ?? '') : '';
+  String get photoUrl {
+    if (storedPhoto.trim().isNotEmpty) return storedPhoto.trim();
+    return signedIn ? (user.photoURL ?? '') : '';
+  }
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -560,9 +586,10 @@ class _ProfilePageState extends State<ProfilePage> {
                 decoration: appCardDecoration(context, radius: 20),
                 child: Column(
                   children: [
-                    _Avatar(
+                    ProfileAvatar(
                       url: photoUrl,
                       name: displayName,
+                      radius: 46,
                       localPhoto: selectedPhoto == null
                           ? null
                           : File(selectedPhoto!.path),
@@ -592,7 +619,9 @@ class _ProfilePageState extends State<ProfilePage> {
                               const SizedBox(width: 3),
                               Text(
                                 profileCity,
-                                style: TextStyle(color: AppPalette.of(context).muted),
+                                style: TextStyle(
+                                  color: AppPalette.of(context).muted,
+                                ),
                               ),
                             ],
                           ),
@@ -601,15 +630,14 @@ class _ProfilePageState extends State<ProfilePage> {
                   ],
                 ),
               ),
-              if (editing)
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextButton.icon(
-                    onPressed: choosePhoto,
-                    icon: const Icon(Icons.add_a_photo_outlined),
-                    label: const Text('Update profile photo'),
-                  ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: choosePhoto,
+                  icon: const Icon(Icons.add_a_photo_outlined),
+                  label: const Text('Change photo'),
                 ),
+              ),
               const SizedBox(height: 18),
               Container(
                 padding: const EdgeInsets.all(16),
@@ -634,7 +662,9 @@ class _ProfilePageState extends State<ProfilePage> {
                       _ProfileInfoRow(
                         icon: Icons.call_outlined,
                         label: 'Phone',
-                        value: profilePhone.isEmpty ? 'Not added yet' : profilePhone,
+                        value: profilePhone.isEmpty
+                            ? 'Not added yet'
+                            : profilePhone,
                       ),
                     if (!editing) const Divider(height: 1),
                     if (editing)
@@ -647,7 +677,9 @@ class _ProfilePageState extends State<ProfilePage> {
                       _ProfileInfoRow(
                         icon: Icons.location_city_outlined,
                         label: 'City',
-                        value: profileCity.isEmpty ? 'Not added yet' : profileCity,
+                        value: profileCity.isEmpty
+                            ? 'Not added yet'
+                            : profileCity,
                       ),
                   ],
                 ),
@@ -717,7 +749,9 @@ class _ProfilePageState extends State<ProfilePage> {
                       )
                     else
                       Text(
-                        upiField.text.trim().isEmpty ? 'Add a UPI ID so learners can pay you.' : upiField.text.trim(),
+                        upiField.text.trim().isEmpty
+                            ? 'Add a UPI ID so learners can pay you.'
+                            : upiField.text.trim(),
                         style: Theme.of(context).textTheme.bodyMedium,
                       ),
                     const SizedBox(height: 16),
@@ -752,7 +786,10 @@ class _ProfilePageState extends State<ProfilePage> {
                         runSpacing: 8,
                         children: [
                           for (final name in topicInterests)
-                            Chip(label: Text(name), visualDensity: VisualDensity.compact),
+                            Chip(
+                              label: Text(name),
+                              visualDensity: VisualDensity.compact,
+                            ),
                         ],
                       ),
                     if (error != null)
@@ -845,53 +882,53 @@ class _ProfilePageState extends State<ProfilePage> {
                 )
               else
                 StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: firestore
-                    .collection('listings')
-                    .where('creatorId', isEqualTo: user.uid)
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  final classes = snapshot.data?.docs ?? [];
-                  if (classes.isEmpty) {
-                    return Text(
-                      'No classes posted yet.',
-                      style: TextStyle(color: AppPalette.of(context).muted),
-                    );
-                  }
-                  return GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: classes.length,
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          crossAxisSpacing: 12,
-                          mainAxisSpacing: 12,
-                          childAspectRatio: .57,
-                        ),
-                    itemBuilder: (context, index) {
-                      final doc = classes[index];
-                      return _PostedClassCard(
-                        data: doc.data(),
-                        onOpen: () => showMasterClassDetails(context, {
-                          ...doc.data(),
-                          'id': doc.id,
-                        }),
-                        onUpdate: () => showModalBottomSheet<bool>(
-                          context: context,
-                          isScrollControlled: true,
-                          builder: (_) => FractionallySizedBox(
-                            heightFactor: .94,
-                            child: MasterClassPostForm(
-                              existing: doc.data(),
-                              listingId: doc.id,
+                  stream: firestore
+                      .collection('listings')
+                      .where('creatorId', isEqualTo: user.uid)
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    final classes = snapshot.data?.docs ?? [];
+                    if (classes.isEmpty) {
+                      return Text(
+                        'No classes posted yet.',
+                        style: TextStyle(color: AppPalette.of(context).muted),
+                      );
+                    }
+                    return GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      itemCount: classes.length,
+                      gridDelegate:
+                          const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 2,
+                            crossAxisSpacing: 12,
+                            mainAxisSpacing: 12,
+                            childAspectRatio: .57,
+                          ),
+                      itemBuilder: (context, index) {
+                        final doc = classes[index];
+                        return _PostedClassCard(
+                          data: doc.data(),
+                          onOpen: () => showMasterClassDetails(context, {
+                            ...doc.data(),
+                            'id': doc.id,
+                          }),
+                          onUpdate: () => showModalBottomSheet<bool>(
+                            context: context,
+                            isScrollControlled: true,
+                            builder: (_) => FractionallySizedBox(
+                              heightFactor: .94,
+                              child: MasterClassPostForm(
+                                existing: doc.data(),
+                                listingId: doc.id,
+                              ),
                             ),
                           ),
-                        ),
-                      );
-                    },
-                  );
-                },
-              ),
+                        );
+                      },
+                    );
+                  },
+                ),
               const SizedBox(height: 18),
               const _ProfileLabel('MY INTERESTED CLASSES'),
               if (!signedIn)
@@ -901,41 +938,44 @@ class _ProfilePageState extends State<ProfilePage> {
                 )
               else
                 StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-                stream: firestore
-                    .collectionGroup('interests')
-                    .where('userId', isEqualTo: user.uid)
-                    .snapshots(),
-                builder: (context, snapshot) {
-                  final interests =
-                      snapshot.data?.docs
-                          .where((doc) => doc.data()['status'] == 'interested')
-                          .toList() ??
-                      [];
-                  if (interests.isEmpty) {
-                    return Text(
-                      'No class interests yet.',
-                      style: TextStyle(color: AppPalette.of(context).muted),
+                  stream: firestore
+                      .collectionGroup('interests')
+                      .where('userId', isEqualTo: user.uid)
+                      .snapshots(),
+                  builder: (context, snapshot) {
+                    final interests =
+                        snapshot.data?.docs
+                            .where(
+                              (doc) => doc.data()['status'] == 'interested',
+                            )
+                            .toList() ??
+                        [];
+                    if (interests.isEmpty) {
+                      return Text(
+                        'No class interests yet.',
+                        style: TextStyle(color: AppPalette.of(context).muted),
+                      );
+                    }
+                    return Column(
+                      children: interests
+                          .map(
+                            (doc) => ListTile(
+                              tileColor: board.paper,
+                              title: Text(
+                                (doc.data()['listingTitle'] ??
+                                        'Interested class')
+                                    .toString(),
+                              ),
+                              subtitle: _InterestSessionAccess(
+                                listingId: (doc.data()['listingId'] ?? '')
+                                    .toString(),
+                              ),
+                            ),
+                          )
+                          .toList(),
                     );
-                  }
-                  return Column(
-                    children: interests
-                        .map(
-                          (doc) => ListTile(
-                            tileColor: board.paper,
-                            title: Text(
-                              (doc.data()['listingTitle'] ?? 'Interested class')
-                                  .toString(),
-                            ),
-                            subtitle: _InterestSessionAccess(
-                              listingId: (doc.data()['listingId'] ?? '')
-                                  .toString(),
-                            ),
-                          ),
-                        )
-                        .toList(),
-                  );
-                },
-              ),
+                  },
+                ),
               const SizedBox(height: 14),
               if (!editing && upiField.text.trim().isNotEmpty)
                 UpiIdCard(upiId: upiField.text.trim(), name: displayName),
@@ -960,9 +1000,13 @@ class _ProfilePageState extends State<ProfilePage> {
                 contentPadding: EdgeInsets.zero,
                 leading: const Icon(Icons.notifications_none),
                 title: const Text('Notifications'),
-                subtitle: const Text('Class reminders, fees, and announcements'),
+                subtitle: const Text(
+                  'Class reminders, fees, and announcements',
+                ),
                 onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const NotificationInboxPage()),
+                  MaterialPageRoute(
+                    builder: (_) => const NotificationInboxPage(),
+                  ),
                 ),
               ),
               const _ProfileLabel('ACCOUNT'),
@@ -971,7 +1015,9 @@ class _ProfilePageState extends State<ProfilePage> {
                   onTap: () async {
                     if (!signedIn) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Sign in to use this account.')),
+                        const SnackBar(
+                          content: Text('Sign in to use this account.'),
+                        ),
                       );
                       return;
                     }
@@ -1019,7 +1065,8 @@ class _RoleChip extends StatelessWidget {
       ),
       child: Text(
         role,
-        style: Theme.of(context).textTheme.labelMedium?.copyWith(color: style.ink),
+        style: Theme.of(context).textTheme.labelMedium
+            ?.copyWith(color: style.ink),
       ),
     );
   }
@@ -1221,31 +1268,6 @@ class _PostedClassImagePlaceholder extends StatelessWidget {
       color: colors.imageFallback,
       child: Center(
         child: Icon(Icons.auto_stories_outlined, color: colors.accent),
-      ),
-    );
-  }
-}
-
-class _Avatar extends StatelessWidget {
-  const _Avatar({required this.url, required this.name, this.localPhoto});
-  final String url, name;
-  final File? localPhoto;
-  @override
-  Widget build(BuildContext context) {
-    final colors = AppPalette.of(context);
-    return CircleAvatar(
-      radius: 46,
-      backgroundColor: colors.accentSoft,
-      foregroundImage: localPhoto != null
-          ? FileImage(localPhoto!)
-          : (url.trim().isEmpty ? null : NetworkImage(url.trim())),
-      child: Text(
-        name.trim().isEmpty ? '?' : name.trim().substring(0, 1).toUpperCase(),
-        style: TextStyle(
-          fontSize: 34,
-          fontWeight: FontWeight.w700,
-          color: colors.onAccentSoft,
-        ),
       ),
     );
   }

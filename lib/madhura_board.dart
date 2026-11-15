@@ -10,7 +10,9 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_theme.dart';
+import 'class_reminders.dart';
 import 'home_catalogue.dart';
+import 'profile_photo.dart';
 import 'language_section.dart';
 import 'nearby_map.dart';
 import 'notification_inbox.dart';
@@ -293,10 +295,16 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
     }
     _loadPreferredCity();
     _refreshMemberId();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) offerMissingProfilePhoto(context);
+    });
     WishlistStore.instance.load();
     _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
       if (!mounted) return;
-      if (user != null && !user.isAnonymous) _loadPreferredCity();
+      if (user != null && !user.isAnonymous) {
+        _loadPreferredCity();
+        offerMissingProfilePhoto(context);
+      }
       _refreshMemberId();
       setState(() {});
     }, onError: (_) {});
@@ -405,6 +413,7 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
         'preferredEventCity': value,
         'updatedAt': FieldValue.serverTimestamp(),
       }, SetOptions(merge: true));
+      await syncCityTopics(eventCity: value);
     } catch (_) {}
   }
 
@@ -677,7 +686,9 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
               CourseCard(
                 data: data,
                 onTap: () async {
-                  if (await openClass(context, data)) _loadListings(reset: true);
+                  if (await openClass(context, data)) {
+                    _loadListings(reset: true);
+                  }
                 },
               ),
               const SizedBox(height: 14),
@@ -879,7 +890,6 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
         .first;
     final colors = AppPalette.of(context);
     final text = Theme.of(context).textTheme;
-    final initial = (name ?? 'M').characters.first.toUpperCase();
     return ListView(
       padding: const EdgeInsets.fromLTRB(20, 12, 20, 96),
       children: [
@@ -931,7 +941,9 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
             IconButton(
               tooltip: 'Notifications',
               onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const NotificationInboxPage()),
+                MaterialPageRoute(
+                  builder: (_) => const NotificationInboxPage(),
+                ),
               ),
               icon: Icon(Icons.notifications_none, color: colors.ink),
             ),
@@ -941,16 +953,7 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
               child: InkWell(
                 onTap: () => _selectTab(3),
                 customBorder: const CircleBorder(),
-                child: CircleAvatar(
-                  radius: 22,
-                  backgroundColor: colors.accentSoft,
-                  child: Text(
-                    initial,
-                    style: text.titleMedium?.copyWith(
-                      color: colors.onAccentSoft,
-                    ),
-                  ),
-                ),
+                child: _HomeAvatar(name: name ?? 'M'),
               ),
             ),
           ],
@@ -990,7 +993,9 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
         const SizedBox(height: 18),
         AppSectionHeader(title: 'Browse by subject'),
         const SizedBox(height: 12),
-        HomeCategoryRail(onOpen: (name) => _openBrowse('online', focusCategory: name)),
+        HomeCategoryRail(
+          onOpen: (name) => _openBrowse('online', focusCategory: name),
+        ),
         const SizedBox(height: 22),
         _communityEntry(
           context,
@@ -1276,9 +1281,8 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
                     (value) => _Chip(
                       value,
                       focus == value,
-                      () => setState(
-                        () => focus = focus == value ? null : value,
-                      ),
+                      () =>
+                          setState(() => focus = focus == value ? null : value),
                     ),
                   )
                   .toList(),
@@ -1341,8 +1345,7 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
         child: AppEmpty(
           icon: Icons.person_outline,
           title: 'Your profile',
-          message:
-              'Sign in to publish classes, save your city, and see learners who are interested.',
+          message: 'Sign in to publish classes, save your city, and see learners who are interested.',
           actionLabel: 'Sign in',
           onAction: () async {
             final ok = await requireLogin(context);
@@ -1516,7 +1519,8 @@ class _DemoFeed extends StatelessWidget {
             return AppEmpty(
               icon: Icons.how_to_vote_outlined,
               title: 'No demo votes yet',
-              message: 'Propose a demo class and let learners choose what to try.',
+              message:
+                  'Propose a demo class and let learners choose what to try.',
               actionLabel: 'Post a demo',
               onAction: () => openCommunityPost(context, 'demo_poll'),
             );
@@ -1803,7 +1807,9 @@ class _Card extends StatelessWidget {
                             (data['start_date'] ?? 'Dates to be announced')
                                 .toString(),
                             overflow: TextOverflow.ellipsis,
-                            style: text.bodySmall?.copyWith(color: colors.muted),
+                            style: text.bodySmall?.copyWith(
+                              color: colors.muted,
+                            ),
                           ),
                         ),
                         Icon(
@@ -1920,6 +1926,28 @@ class _CountBadge extends StatelessWidget {
   }
 }
 
+class _HomeAvatar extends StatelessWidget {
+  const _HomeAvatar({required this.name});
+
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous) {
+      return ProfileAvatar(url: '', name: name);
+    }
+    return StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+      stream: firestore.collection('profiles').doc(user.uid).snapshots(),
+      builder: (context, snapshot) {
+        final stored = (snapshot.data?.data()?['pictureUrl'] ?? '').toString();
+        final url = stored.trim().isNotEmpty ? stored : (user.photoURL ?? '');
+        return ProfileAvatar(url: url, name: name);
+      },
+    );
+  }
+}
+
 void showProfile(BuildContext context) => showModalBottomSheet(
   context: context,
   showDragHandle: true,
@@ -1936,9 +1964,8 @@ void showProfile(BuildContext context) => showModalBottomSheet(
         const SizedBox(height: 8),
         Text(
           'Browse classes and share your knowledge.',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: AppPalette.of(context).muted,
-          ),
+          style: Theme.of(context).textTheme.bodyMedium
+              ?.copyWith(color: AppPalette.of(context).muted),
         ),
       ],
     ),

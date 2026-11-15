@@ -26,15 +26,24 @@ function isDueTodayOrOverdue(enrolledAt, now) {
   return dueKey === dayKey(today) || dueKey === dayKey(late);
 }
 
-async function notifyUser(uid, title, body, kind) {
+async function notifyUser(uid, title, body, kind, noteId, push = true) {
   const db = getFirestore();
-  await db.collection('profiles').doc(uid).collection('notifications').add({
+  const notes = db.collection('profiles').doc(uid).collection('notifications');
+  const payload = {
     title,
     body,
     kind,
     read: false,
     createdAt: Timestamp.now(),
-  });
+  };
+  if (noteId) {
+    const existing = await notes.doc(noteId).get();
+    if (existing.exists) return;
+    await notes.doc(noteId).set(payload);
+  } else {
+    await notes.add(payload);
+  }
+  if (!push) return;
   const profile = await db.collection('profiles').doc(uid).get();
   const tokens = profile.get('fcmTokens') || [];
   if (!Array.isArray(tokens) || tokens.length === 0) return;
@@ -78,6 +87,98 @@ exports.feeReminders = onSchedule('every day 09:00', async () => {
         'fee_due',
       );
     }
+  }
+});
+
+exports.interestNotice = onDocumentCreated(
+  'listings/{listingId}/interests/{userId}',
+  async (event) => {
+    const data = event.data ? event.data.data() : null;
+    if (!data || data.status !== 'interested') return;
+    const listingId = event.params.listingId;
+    const learnerId = event.params.userId;
+    const db = getFirestore();
+    const listing = await db.collection('listings').doc(listingId).get();
+    const masterId = listing.get('creatorId');
+    if (!masterId || masterId === learnerId || String(masterId).startsWith('demo_')) return;
+    const classTitle = listing.get('title') || data.listingTitle || 'your class';
+    const learner = data.userName || 'A learner';
+    const mcId = data.mcId ? ` (${data.mcId})` : '';
+    await notifyUser(
+      masterId,
+      'New interest',
+      `${learner}${mcId} wants to join ${classTitle}.`,
+      'interest',
+    );
+  },
+);
+
+function citySlug(city) {
+  return String(city || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+function sameCity(left, right) {
+  const a = String(left || '').trim().toLowerCase();
+  const b = String(right || '').trim().toLowerCase();
+  return a.length > 0 && a === b;
+}
+
+function istDayKey(offsetDays) {
+  const istMillis = Date.now() + 5.5 * 60 * 60 * 1000 + offsetDays * DAY;
+  return new Date(istMillis).toISOString().slice(0, 10);
+}
+
+// 03:30 UTC is 09:00 IST.
+exports.eventReminders = onSchedule({ schedule: '30 3 * * *', timeZone: 'UTC' }, async () => {
+  const db = getFirestore();
+  const tomorrow = istDayKey(1);
+  const listings = await db.collection('listings').where('start_date', '==', tomorrow).get();
+  const profiles = await db.collection('profiles').get();
+  for (const listing of listings.docs) {
+    if (String(listing.id).startsWith('demo_')) continue;
+    const format = listing.get('listing_type') || listing.get('type') || '';
+    if (format !== 'event') continue;
+    const eventCity = listing.get('city') || '';
+    const slug = citySlug(eventCity);
+    if (!slug) continue;
+    const markerRef = db.collection('eventReminders').doc(`${listing.id}_${tomorrow}`);
+    if ((await markerRef.get()).exists) continue;
+    const title = listing.get('title') || 'An event';
+    const body = `${title} is in ${eventCity} tomorrow.`;
+    for (const profile of profiles.docs) {
+      const uid = profile.id;
+      if (String(uid).startsWith('demo_')) continue;
+      const matches =
+        sameCity(profile.get('city'), eventCity) ||
+        sameCity(profile.get('preferredEventCity'), eventCity);
+      if (!matches) continue;
+      await notifyUser(
+        uid,
+        'Event tomorrow',
+        body,
+        'event_reminder',
+        `event_${listing.id}_${tomorrow}`,
+        false,
+      );
+    }
+    try {
+      await getMessaging().send({
+        topic: `city_${slug}`,
+        notification: { title: 'Event tomorrow', body },
+      });
+    } catch (error) {
+      console.error('Event topic push failed', listing.id, error);
+    }
+    await markerRef.set({
+      listingId: listing.id,
+      city: eventCity,
+      date: tomorrow,
+      sentAt: Timestamp.now(),
+    });
   }
 });
 

@@ -10,6 +10,7 @@ import 'admin_moderation.dart';
 import 'app_theme.dart';
 import 'class_announcements.dart';
 import 'class_batches.dart';
+import 'class_interest_sheet.dart';
 import 'class_reminders.dart';
 import 'class_reviews.dart';
 import 'class_roster.dart';
@@ -31,9 +32,8 @@ class MasterClassDetailPage extends StatelessWidget {
   Future<void> copy(BuildContext context, String value, String message) async {
     await Clipboard.setData(ClipboardData(text: value));
     if (context.mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(message)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(message)));
     }
   }
 
@@ -178,7 +178,10 @@ class MasterClassDetailPage extends StatelessWidget {
                   style: text.bodySmall?.copyWith(color: colors.muted),
                 ),
                 const SizedBox(height: 8),
-                Text(title, style: text.headlineSmall?.copyWith(color: colors.ink)),
+                Text(
+                  title,
+                  style: text.headlineSmall?.copyWith(color: colors.ink),
+                ),
                 const SizedBox(height: 18),
                 Row(
                   children: [
@@ -221,7 +224,9 @@ class MasterClassDetailPage extends StatelessWidget {
                   if (isOwner)
                     OutlinedButton.icon(
                       onPressed: () => Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => BatchesPage(listing: data)),
+                        MaterialPageRoute(
+                          builder: (_) => BatchesPage(listing: data),
+                        ),
                       ),
                       icon: const Icon(Icons.groups_outlined),
                       label: const Text('Batches'),
@@ -252,7 +257,11 @@ class MasterClassDetailPage extends StatelessWidget {
                     ClassInterestCount(listingId: listingId),
                     _OwnerInterestList(listingId: listingId),
                   ] else
-                    _ClassInterestPanel(listingId: listingId, title: title, listing: data),
+                    _ClassInterestPanel(
+                      listingId: listingId,
+                      title: title,
+                      listing: data,
+                    ),
                   const SizedBox(height: 13),
                 ],
                 ClassReviewsSection(listing: data),
@@ -401,9 +410,8 @@ class ClassInterestCount extends StatelessWidget {
                 Expanded(
                   child: Text(
                     '$count learner${count == 1 ? '' : 's'} interested',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                      color: colors.onAccentSoft,
-                    ),
+                    style: Theme.of(context).textTheme.titleSmall
+                        ?.copyWith(color: colors.onAccentSoft),
                   ),
                 ),
               ],
@@ -414,7 +422,11 @@ class ClassInterestCount extends StatelessWidget {
 }
 
 class _ClassInterestPanel extends StatefulWidget {
-  const _ClassInterestPanel({required this.listingId, required this.title, this.listing});
+  const _ClassInterestPanel({
+    required this.listingId,
+    required this.title,
+    this.listing,
+  });
   final String listingId;
   final String title;
   final Map<String, dynamic>? listing;
@@ -426,26 +438,10 @@ class _ClassInterestPanel extends StatefulWidget {
 class _ClassInterestPanelState extends State<_ClassInterestPanel> {
   bool saving = false;
   String? error;
-  final contact = TextEditingController();
 
-  @override
-  void dispose() {
-    contact.dispose();
-    super.dispose();
-  }
-
-  Future<void> updateInterest(String? currentStatus) async {
+  Future<void> removeInterest() async {
     final user = FirebaseAuth.instance.currentUser;
     if (user == null || user.isAnonymous) return;
-    final contactValue = contact.text.trim();
-    if (currentStatus != 'interested' &&
-        contactValue.isNotEmpty &&
-        contactValue.length < 5) {
-      setState(
-        () => error = 'Enter a valid contact number, or leave it empty.',
-      );
-      return;
-    }
     setState(() {
       saving = true;
       error = null;
@@ -456,24 +452,8 @@ class _ClassInterestPanelState extends State<_ClassInterestPanel> {
         .collection('interests')
         .doc(user.uid);
     try {
-      if (currentStatus == 'interested') {
-        await ref.delete();
-        await cancelClassReminders(widget.listingId);
-      } else {
-        await ref.set({
-          'listingId': widget.listingId,
-          'listingTitle': widget.title,
-          'userId': user.uid,
-          'userName': user.displayName ?? '',
-          'userEmail': user.email ?? '',
-          if (contactValue.isNotEmpty) 'contactNumber': contactValue,
-          'status': 'interested',
-          'createdAt': DateTime.now().toUtc().toIso8601String(),
-        });
-        if (widget.listing != null) {
-          await scheduleClassReminders(widget.listing!);
-        }
-      }
+      await ref.delete();
+      await cancelClassReminders(widget.listingId);
     } on FirebaseException catch (e) {
       if (mounted) setState(() => error = e.message ?? e.code);
     } finally {
@@ -498,35 +478,52 @@ class _ClassInterestPanelState extends State<_ClassInterestPanel> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (!interested) ...[
-              TextField(
-                controller: contact,
-                keyboardType: TextInputType.phone,
-                decoration: const InputDecoration(
-                  labelText: 'Your WhatsApp / contact number (optional)',
-                  helperText: 'Shared only with the class owner.',
-                  prefixIcon: Icon(Icons.phone_outlined),
-                ),
-              ),
-              const SizedBox(height: 10),
-            ],
             FilledButton.icon(
-              onPressed: saving ? null : () => updateInterest(status),
+              onPressed: saving
+                  ? null
+                  : () async {
+                      if (interested) {
+                        await removeInterest();
+                        return;
+                      }
+                      await showClassInterestSheet(
+                        context: context,
+                        listingId: widget.listingId,
+                        title: widget.title,
+                        listing: widget.listing,
+                        joining: true,
+                      );
+                    },
               icon: Icon(
                 interested ? Icons.check_circle : Icons.favorite_border,
               ),
               label: Text(
-                interested ? 'Interested · Tap to remove' : 'Express interest',
+                interested ? 'Interested · Tap to remove' : 'Interested / Join',
               ),
             ),
+            if (interested)
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => showClassInterestSheet(
+                    context: context,
+                    listingId: widget.listingId,
+                    title: widget.title,
+                    listing: widget.listing,
+                    joining: false,
+                  ),
+                  icon: const Icon(Icons.contact_phone_outlined),
+                  label: const Text('Master contact'),
+                ),
+              ),
             if (interested) _PrivateClassAccess(listingId: widget.listingId),
             if (error != null)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
                 child: Text(
-                error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
+                  error!,
+                  style: TextStyle(color: Theme.of(context).colorScheme.error),
+                ),
               ),
           ],
         );
@@ -588,10 +585,8 @@ class _PrivateClassAccess extends StatelessWidget {
               children: [
                 Text(
                   'PRIVATE CLASS ACCESS',
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    letterSpacing: 1.1,
-                    color: colors.muted,
-                  ),
+                  style: Theme.of(context).textTheme.labelSmall
+                      ?.copyWith(letterSpacing: 1.1, color: colors.muted),
                 ),
                 if (contact.isNotEmpty) ...[
                   const SizedBox(height: 8),
@@ -646,16 +641,14 @@ class _OwnerInterestList extends StatelessWidget {
           children: [
             Text(
               'INTERESTED LEARNERS',
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                letterSpacing: 1.1,
-                color: colors.muted,
-              ),
+              style: Theme.of(context).textTheme.labelSmall
+                  ?.copyWith(letterSpacing: 1.1, color: colors.muted),
             ),
             for (final person in people)
               Padding(
                 padding: const EdgeInsets.only(top: 9),
                 child: Text(
-                  '${person.data()['userName'] ?? person.data()['userEmail'] ?? 'Learner'}${(person.data()['contactNumber'] ?? '').toString().isEmpty ? '' : ' · ${person.data()['contactNumber']}'}',
+                  '${person.data()['userName'] ?? person.data()['userEmail'] ?? 'Learner'}${(person.data()['mcId'] ?? '').toString().isEmpty ? '' : ' · ${person.data()['mcId']}'}${(person.data()['contactNumber'] ?? '').toString().isEmpty ? '' : ' · ${person.data()['contactNumber']}'}',
                 ),
               ),
           ],
