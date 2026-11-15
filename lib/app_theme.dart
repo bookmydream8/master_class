@@ -66,25 +66,6 @@ class AppPalette extends ThemeExtension<AppPalette> {
     shadow: Color(0x14182428),
   );
 
-  static const dark = AppPalette(
-    canvas: Color(0xFF121618),
-    card: Color(0xFF1C2326),
-    ink: Color(0xFFF2F6F6),
-    muted: Color(0xFFC5D0D2),
-    line: Color(0xFF313A3D),
-    accent: Color(0xFF8FD0D4),
-    onAccent: Color(0xFF08343A),
-    accentSoft: Color(0xFF1E3A3E),
-    onAccentSoft: Color(0xFFD7F3F4),
-    onlineWell: Color(0xFF1A3336),
-    physicalWell: Color(0xFF1C3328),
-    competitionWell: Color(0xFF333026),
-    eventWell: Color(0xFF222A38),
-    wellInk: Color(0xFFD5EEEF),
-    imageFallback: Color(0xFF243033),
-    shadow: Color(0x66000000),
-  );
-
   @override
   AppPalette copyWith({
     Color? canvas,
@@ -149,15 +130,13 @@ class AppPalette extends ThemeExtension<AppPalette> {
 }
 
 class AppTheme {
-  static ThemeData light() => _build(Brightness.light);
-  static ThemeData dark() => _build(Brightness.dark);
+  static ThemeData light() => _build();
 
-  static ThemeData _build(Brightness brightness) {
-    final dark = brightness == Brightness.dark;
-    final palette = dark ? AppPalette.dark : AppPalette.light;
+  static ThemeData _build() {
+    const palette = AppPalette.light;
     final scheme = ColorScheme.fromSeed(
       seedColor: const Color(0xFF1A6B73),
-      brightness: brightness,
+      brightness: Brightness.light,
       dynamicSchemeVariant: DynamicSchemeVariant.fidelity,
       primary: palette.accent,
       onPrimary: palette.onAccent,
@@ -173,23 +152,19 @@ class AppTheme {
       outline: palette.line,
       outlineVariant: palette.line,
       surfaceTint: Colors.transparent,
-      error: dark ? const Color(0xFFFFB4AB) : const Color(0xFFB42318),
-      onError: dark ? const Color(0xFF690005) : Colors.white,
-      errorContainer: dark ? const Color(0xFF93000A) : const Color(0xFFFEE4E2),
-      onErrorContainer: dark ? const Color(0xFFFFDAD6) : const Color(0xFF7A271A),
+      error: const Color(0xFFB42318),
+      onError: Colors.white,
+      errorContainer: const Color(0xFFFEE4E2),
+      onErrorContainer: const Color(0xFF7A271A),
     ).copyWith(
       surfaceContainerLowest: palette.card,
       surfaceContainerLow: palette.canvas,
-      surfaceContainer: dark ? const Color(0xFF222A2D) : const Color(0xFFEEF3F3),
-      surfaceContainerHigh: dark
-          ? const Color(0xFF2A3336)
-          : const Color(0xFFE6EEEE),
-      surfaceContainerHighest: dark
-          ? const Color(0xFF354044)
-          : const Color(0xFFDCE6E6),
+      surfaceContainer: const Color(0xFFEEF3F3),
+      surfaceContainerHigh: const Color(0xFFE6EEEE),
+      surfaceContainerHighest: const Color(0xFFDCE6E6),
     );
     final seedText = ThemeData(
-      brightness: brightness,
+      brightness: Brightness.light,
       useMaterial3: true,
     ).textTheme;
     final text = _textTheme(
@@ -206,7 +181,7 @@ class AppTheme {
 
     return ThemeData(
       useMaterial3: true,
-      brightness: brightness,
+      brightness: Brightness.light,
       colorScheme: scheme,
       scaffoldBackgroundColor: palette.canvas,
       canvasColor: palette.canvas,
@@ -225,8 +200,8 @@ class AppTheme {
         titleTextStyle: text.titleMedium?.copyWith(color: palette.ink),
         systemOverlayStyle: SystemUiOverlayStyle(
           statusBarColor: Colors.transparent,
-          statusBarIconBrightness: dark ? Brightness.light : Brightness.dark,
-          statusBarBrightness: dark ? Brightness.dark : Brightness.light,
+          statusBarIconBrightness: Brightness.dark,
+          statusBarBrightness: Brightness.light,
         ),
       ),
       cardTheme: CardThemeData(
@@ -257,9 +232,9 @@ class AppTheme {
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,
-        backgroundColor: dark ? palette.card : scheme.inverseSurface,
+        backgroundColor: scheme.inverseSurface,
         contentTextStyle: text.bodyMedium?.copyWith(
-          color: dark ? palette.ink : scheme.onInverseSurface,
+          color: scheme.onInverseSurface,
         ),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),

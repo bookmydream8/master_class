@@ -27,10 +27,9 @@ class CourseCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = AppPalette.of(context);
     final text = Theme.of(context).textTheme;
-    final brightness = Theme.of(context).brightness;
     final style = categoryStyleFor(data);
-    final ink = style.foreground(brightness);
-    final tint = style.well(brightness);
+    final ink = style.ink;
+    final tint = style.tint;
     final title = (data['title'] ?? 'Class').toString();
     final educator = (data['creatorName'] ?? '').toString();
     final rating = ratingOf(data);
@@ -185,7 +184,7 @@ class CourseCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(22),
           boxShadow: [
             BoxShadow(
-              color: ink.withValues(alpha: brightness == Brightness.dark ? 0.18 : 0.1),
+              color: ink.withValues(alpha: 0.1),
               blurRadius: 18,
               offset: const Offset(0, 8),
             ),
@@ -277,7 +276,6 @@ class _PromoCarouselState extends State<PromoCarousel> {
 
   @override
   Widget build(BuildContext context) {
-    final brightness = Theme.of(context).brightness;
     final banners = [
       _Banner(
         kicker: 'THIS WEEK',
@@ -308,7 +306,7 @@ class _PromoCarouselState extends State<PromoCarousel> {
             onPageChanged: (value) => setState(() => page = value),
             itemBuilder: (context, index) {
               final banner = banners[index];
-              final colors = banner.style.wash(brightness);
+              final colors = banner.style.gradient;
               return Padding(
                 padding: const EdgeInsets.only(right: 12),
                 child: Material(
@@ -414,7 +412,6 @@ class HomeCategoryRail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final brightness = Theme.of(context).brightness;
     final names = board.categories.keys.toList();
     return SizedBox(
       height: 96,
@@ -426,9 +423,9 @@ class HomeCategoryRail extends StatelessWidget {
           final name = names[index];
           final id = board.categoryIds[name] ?? '';
           final style = categoryStyleForId(id);
-          final ink = style.foreground(brightness);
+          final ink = style.ink;
           return Material(
-            color: style.well(brightness),
+            color: style.tint,
             borderRadius: BorderRadius.circular(18),
             child: InkWell(
               onTap: () => onOpen(name),
@@ -575,12 +572,11 @@ class _StatCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final brightness = Theme.of(context).brightness;
-    final ink = style.foreground(brightness);
+    final ink = style.ink;
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: style.well(brightness),
+        color: style.tint,
         borderRadius: BorderRadius.circular(20),
       ),
       child: Row(
