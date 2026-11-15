@@ -13,7 +13,9 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'app_theme.dart';
+import 'class_roster_pages.dart';
 import 'madhura_board.dart' as board;
+import 'member_id.dart';
 import 'madhura_detail.dart' show showMasterClassDetails;
 import 'madhura_post.dart';
 
@@ -64,6 +66,11 @@ class _LoginPageState extends State<LoginPage> {
       final signedIn = await FirebaseAuth.instance.signInWithCredential(
         credential,
       );
+      try {
+        await ensureMemberId(signedIn.user!);
+      } catch (e) {
+        debugPrint('MC ID was not assigned: $e');
+      }
       final profile = await firestore
           .collection('profiles')
           .doc(signedIn.user!.uid)
@@ -312,7 +319,11 @@ class _RegistrationPageState extends State<RegistrationPage> {
 }
 
 class ProfilePage extends StatefulWidget {
-  const ProfilePage({super.key});
+  const ProfilePage({super.key, this.previewMcId});
+
+  /// Used by the screenshot preview when nobody is signed in.
+  final String? previewMcId;
+
   @override
   State<ProfilePage> createState() => _ProfilePageState();
 }
@@ -321,6 +332,7 @@ class _ProfilePageState extends State<ProfilePage> {
   final expertDetails = TextEditingController();
   String profileCity = '';
   String profilePhone = '';
+  String mcId = '';
   bool loading = true;
   bool saving = false;
   bool editing = false;
@@ -341,12 +353,24 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   Future<void> load() async {
+    final signedIn = FirebaseAuth.instance.currentUser;
+    if (signedIn == null || signedIn.isAnonymous) {
+      mcId = widget.previewMcId ?? '';
+      profileCity = widget.previewMcId == null ? '' : 'Bangalore';
+      if (mounted) setState(() => loading = false);
+      return;
+    }
     try {
-      final data = (await firestore.collection('profiles').doc(user.uid).get())
+      try {
+        mcId = await ensureMemberId(signedIn);
+      } catch (_) {}
+      final data = (await firestore.collection('profiles').doc(signedIn.uid).get())
           .data();
       expertDetails.text = (data?['expertDetails'] ?? '').toString();
       profileCity = (data?['city'] ?? '').toString();
       profilePhone = (data?['phoneNumber'] ?? '').toString();
+      final stored = (data?['mcId'] ?? '').toString();
+      if (stored.isNotEmpty) mcId = stored;
     } catch (_) {
       // A profile document may not exist yet. The form remains usable.
     } finally {
@@ -430,6 +454,24 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  Widget _previewProfile(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        const Center(
+          child: Text(
+            'Demo Member',
+            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
+          ),
+        ),
+        const SizedBox(height: 8),
+        const Center(child: Text('Bangalore')),
+        const SizedBox(height: 16),
+        if (mcId.isNotEmpty) McIdBanner(mcId: mcId),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
@@ -454,6 +496,8 @@ class _ProfilePageState extends State<ProfilePage> {
     ),
     body: loading
         ? const Center(child: CircularProgressIndicator())
+        : FirebaseAuth.instance.currentUser == null && widget.previewMcId != null
+        ? _previewProfile(context)
         : ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -468,6 +512,10 @@ class _ProfilePageState extends State<ProfilePage> {
                           : File(selectedPhoto!.path),
                     ),
                     const SizedBox(height: 12),
+                    if (mcId.isNotEmpty) ...[
+                      McIdBanner(mcId: mcId),
+                      const SizedBox(height: 12),
+                    ],
                     Text(
                       user.displayName ?? 'Google account',
                       textAlign: TextAlign.center,
@@ -632,6 +680,14 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                   );
                 },
+              ),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => openAllClassFees(context),
+                  icon: const Icon(Icons.payments_outlined),
+                  label: const Text('All class fees'),
+                ),
               ),
               StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                 stream: firestore

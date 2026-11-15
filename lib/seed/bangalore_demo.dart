@@ -109,6 +109,7 @@ List<Map<String, dynamic>> bangaloreDemoListings() {
       'updatedAt': posted.add(const Duration(hours: 9)).toIso8601String(),
       'enrolled_count': spec.enrolled,
       'rating': spec.rating,
+      'fee_period': spec.price >= 1400 ? 'course' : 'month',
       if (spec.live) 'is_live': true,
       'image_url':
           'https://images.unsplash.com/$photo?auto=format&fit=crop&w=900&q=70',

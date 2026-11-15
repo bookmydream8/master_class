@@ -12,6 +12,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'app_theme.dart';
 import 'category_style.dart';
 import 'home_catalogue.dart';
+import 'member_id.dart';
 import 'master_class_app.dart' show showPostSheet;
 import 'seed/bangalore_demo.dart';
 import 'madhura_detail.dart' show MasterClassDetailPage, showMasterClassDetails;
@@ -224,6 +225,7 @@ class MasterClassBoard extends StatefulWidget {
     this.initialTab = 0,
     this.initialFormat,
     this.showFreshOnStart = true,
+    this.previewMcId,
   });
 
   /// Opens Home, Classes, Community, or Profile. Defaults to Home.
@@ -232,8 +234,11 @@ class MasterClassBoard extends StatefulWidget {
   /// When set, opens Classes on this format (online, physical, competition, event).
   final String? initialFormat;
 
-  /// The "just posted" sheet appears once per session unless this is false.
+  /// The "just posted" sheet auto-opens on Home unless this is false.
   final bool showFreshOnStart;
+
+  /// Shown in the header when there is no signed-in profile yet.
+  final String? previewMcId;
 
   @override
   State<MasterClassBoard> createState() => _MasterClassBoardState();
@@ -261,6 +266,7 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
   String? _listingError;
   late int _tab;
   late final StreamSubscription<User?> _authSub;
+  String memberId = '';
 
   @override
   void initState() {
@@ -283,11 +289,29 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
       WidgetsBinding.instance.addPostFrameCallback((_) => _showFreshPosts());
     }
     _loadPreferredCity();
+    _refreshMemberId();
     _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
       if (!mounted) return;
       if (user != null && !user.isAnonymous) _loadPreferredCity();
+      _refreshMemberId();
       setState(() {});
     }, onError: (_) {});
+  }
+
+  Future<void> _refreshMemberId() async {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous) {
+      final preview = widget.previewMcId ?? '';
+      if (mounted && preview.isNotEmpty) setState(() => memberId = preview);
+      return;
+    }
+    try {
+      final id = await ensureMemberId(user);
+      if (mounted) setState(() => memberId = id);
+    } catch (_) {
+      final preview = widget.previewMcId ?? '';
+      if (mounted && preview.isNotEmpty) setState(() => memberId = preview);
+    }
   }
 
   Future<void> _loadPreferredCity() async {
@@ -876,6 +900,10 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
                       ),
                     ],
                   ),
+                  if (memberId.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    McIdBanner(mcId: memberId, compact: true),
+                  ],
                 ],
               ),
             ),

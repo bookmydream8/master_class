@@ -70,6 +70,7 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
   final customCity = TextEditingController();
   final area = TextEditingController();
   bool isFree = true;
+  String feePeriod = 'month';
   bool saving = false;
   bool locating = false;
   String? error;
@@ -115,6 +116,7 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
       city = '_custom';
     }
     isFree = data['is_free'] == true || data['priceType'] == 'free';
+    feePeriod = data['fee_period'] == 'course' ? 'course' : 'month';
     title.text = (data['title'] ?? '').toString();
     description.text = (data['description'] ?? '').toString();
     aboutMaster.text = (data['about_master'] ?? '').toString();
@@ -457,6 +459,8 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
             'priceType': isFree ? 'free' : 'paid',
             'is_free': isFree,
             'price': isFree ? 0 : amount,
+            if (format == 'online' || format == 'physical')
+              'fee_period': isFree ? 'month' : feePeriod,
             'start_date': startDate?.toIso8601String().substring(0, 10),
             'start_time': startTime == null
                 ? null
@@ -864,8 +868,40 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                   TextField(
                     controller: price,
                     keyboardType: TextInputType.number,
-                    decoration: _decoration(context, 'Price in ₹'),
+                    decoration: _decoration(
+                      context,
+                      format == 'online' || format == 'physical'
+                          ? 'Fee amount in ₹'
+                          : 'Price in ₹',
+                    ),
                   ),
+                  if (format == 'online' || format == 'physical') ...[
+                    const SizedBox(height: 10),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Fee type',
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        ChoiceChip(
+                          label: const Text('Per month'),
+                          selected: feePeriod == 'month',
+                          onSelected: (_) => setState(() => feePeriod = 'month'),
+                        ),
+                        ChoiceChip(
+                          label: const Text('One-time course fee'),
+                          selected: feePeriod == 'course',
+                          onSelected: (_) => setState(() => feePeriod = 'course'),
+                        ),
+                      ],
+                    ),
+                  ],
                 ],
               ],
             ),

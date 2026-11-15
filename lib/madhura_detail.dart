@@ -8,6 +8,8 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'admin_moderation.dart';
 import 'app_theme.dart';
+import 'class_roster.dart';
+import 'class_roster_pages.dart';
 import 'firestore_database.dart';
 import 'madhura_board.dart' as board;
 
@@ -207,6 +209,27 @@ class MasterClassDetailPage extends StatelessWidget {
                   _Section('SUITABLE AGE GROUP', ageGroup),
                 if (expiryDate.isNotEmpty)
                   _Section('LISTING EXPIRES', expiryDate),
+                if (classSupportsRoster(format)) ...[
+                  const SizedBox(height: 4),
+                  FilledButton.icon(
+                    onPressed: () => openEnrolment(context, data),
+                    icon: const Icon(Icons.group_add_outlined),
+                    label: const Text('Enrol attendees'),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => openAttendance(context, data),
+                    icon: const Icon(Icons.fact_check_outlined),
+                    label: const Text('Attendance'),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => openFees(context, data),
+                    icon: const Icon(Icons.payments_outlined),
+                    label: const Text('Fees'),
+                  ),
+                  const SizedBox(height: 14),
+                ],
                 if (listingId.isNotEmpty) ...[
                   const SizedBox(height: 2),
                   if (isOwner) ...[
