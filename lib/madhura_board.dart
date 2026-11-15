@@ -10,7 +10,6 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_theme.dart';
-import 'category_style.dart';
 import 'home_catalogue.dart';
 import 'member_id.dart';
 import 'master_class_app.dart' show showPostSheet;
@@ -558,6 +557,18 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
     return query.isEmpty || words.contains(query);
   }
 
+  /// Unfiltered catalogue for Home counts and the demo rail.
+  /// Live documents replace the Bangalore seed, same as the class list.
+  List<Map<String, dynamic>> _homeCatalogue() {
+    if (_listingDocs.isEmpty) {
+      return bangaloreDemoListings().where((data) => !isExpired(data)).toList();
+    }
+    return _listingDocs
+        .where((doc) => !isExpired(doc.data()))
+        .map((doc) => {...doc.data(), 'id': doc.id})
+        .toList();
+  }
+
   List<Map<String, dynamic>> _visibleListings() {
     final live = _listingDocs
         .where((doc) => !isExpired(doc.data()) && matches(doc.data()))
@@ -943,76 +954,11 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
         const SizedBox(height: 16),
         PromoCarousel(onOpen: _openBrowse),
         const SizedBox(height: 22),
-        Text('Learn your way', style: text.titleLarge),
-        const SizedBox(height: 4),
-        Text(
-          'Pick a format to browse',
-          style: text.bodySmall?.copyWith(color: colors.muted),
-        ),
-        const SizedBox(height: 12),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final tileWidth = (constraints.maxWidth - 12) / 2;
-            Widget tile({
-              required IconData icon,
-              required String title,
-              required String subtitle,
-              required Color color,
-              required String format,
-            }) => SizedBox(
-              width: tileWidth,
-              child: _HomeTypeTile(
-                icon: icon,
-                title: title,
-                subtitle: subtitle,
-                color: color,
-                onTap: () => _openBrowse(format),
-              ),
-            );
-            return Column(
-              children: [
-                Row(
-                  children: [
-                    tile(
-                      icon: Icons.laptop_mac_outlined,
-                      title: 'Online',
-                      subtitle: 'Learn anywhere',
-                      color: categoryStyleForId('language').tint,
-                      format: 'online',
-                    ),
-                    const SizedBox(width: 12),
-                    tile(
-                      icon: Icons.location_on_outlined,
-                      title: 'Physical',
-                      subtitle: 'Meet nearby',
-                      color: categoryStyleForId('yoga').tint,
-                      format: 'physical',
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    tile(
-                      icon: Icons.emoji_events_outlined,
-                      title: 'Competition',
-                      subtitle: 'Show your skills',
-                      color: categoryStyleForId('sports').tint,
-                      format: 'competition',
-                    ),
-                    const SizedBox(width: 12),
-                    tile(
-                      icon: Icons.event_outlined,
-                      title: 'Events',
-                      subtitle: 'What\'s on',
-                      color: categoryStyleForId('workshop').tint,
-                      format: 'event',
-                    ),
-                  ],
-                ),
-              ],
-            );
-          },
+        LearnYourWay(listings: _homeCatalogue(), onOpen: _openBrowse),
+        const SizedBox(height: 22),
+        DemoClassesSoon(
+          listings: _homeCatalogue(),
+          onOpen: (data) => showMasterClassDetails(context, data),
         ),
         const SizedBox(height: 18),
         AppSectionHeader(title: 'Browse by subject'),
@@ -1674,81 +1620,6 @@ class _Chip extends StatelessWidget {
                 color: active ? colors.onAccent : colors.ink,
                 fontWeight: FontWeight.w600,
               ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _HomeTypeTile extends StatelessWidget {
-  const _HomeTypeTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.color,
-    required this.onTap,
-  });
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color color;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = AppPalette.of(context);
-    final text = Theme.of(context).textTheme;
-    return Material(
-      color: colors.card,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
-        side: BorderSide(color: colors.line),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(minHeight: 84),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-            child: Row(
-              children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: color,
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  child: Icon(icon, size: 22, color: colors.ink),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: text.titleSmall?.copyWith(color: colors.ink),
-                      ),
-                      if (subtitle.isNotEmpty) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          subtitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: text.bodySmall?.copyWith(color: colors.muted),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
             ),
           ),
         ),

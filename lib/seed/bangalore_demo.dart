@@ -81,11 +81,12 @@ List<Map<String, dynamic>> bangaloreDemoListings() {
     final posted = today.subtract(Duration(days: spec.postedDaysAgo));
     final starts = today.add(Duration(days: spec.startsInDays));
     final slug = spec.educator.toLowerCase().replaceAll(RegExp(r'[^a-z]+'), '_');
-    final format = spec.format == 'physical'
-        ? 'offline_class'
-        : spec.format == 'online'
-        ? 'online_class'
-        : 'competition';
+    final format = switch (spec.format) {
+      'physical' => 'offline_class',
+      'online' => 'online_class',
+      'event' => 'event',
+      _ => 'competition',
+    };
     final photo = _photos[spec.categoryId]![index % _photos[spec.categoryId]!.length];
     listings.add({
       'id': 'demo_${spec.format}_$index',
@@ -101,8 +102,8 @@ List<Map<String, dynamic>> bangaloreDemoListings() {
       'city': 'Bangalore',
       if (spec.area.isNotEmpty) 'area': spec.area,
       'price': spec.price,
-      if (spec.price == 0) 'is_free': true,
-      if (spec.price == 0) 'priceType': 'free',
+      if (spec.price == 0 || spec.demo) 'is_free': true,
+      if (spec.price == 0 || spec.demo) 'priceType': 'free',
       'start_date': _date(starts),
       'expiry_date': _date(today.add(const Duration(days: 60))),
       'createdAt': posted.add(const Duration(hours: 9)).toIso8601String(),
@@ -110,6 +111,7 @@ List<Map<String, dynamic>> bangaloreDemoListings() {
       'enrolled_count': spec.enrolled,
       'rating': spec.rating,
       'fee_period': spec.price >= 1400 ? 'course' : 'month',
+      if (spec.demo) 'is_demo': true,
       if (spec.live) 'is_live': true,
       'image_url':
           'https://images.unsplash.com/$photo?auto=format&fit=crop&w=900&q=70',
@@ -136,6 +138,7 @@ class _Spec {
     required this.startsInDays,
     required this.blurb,
     this.live = false,
+    this.demo = false,
   });
 
   final String format;
@@ -151,6 +154,43 @@ class _Spec {
   final int startsInDays;
   final String blurb;
   final bool live;
+  final bool demo;
+}
+
+bool isDemoListing(Map<String, dynamic> data) => data['is_demo'] == true;
+
+DateTime? classStartDate(Map<String, dynamic> data) =>
+    DateTime.tryParse((data['start_date'] ?? '').toString());
+
+/// Whole days from today until the class starts. Negative means it already started.
+int daysUntilStart(Map<String, dynamic> data, [DateTime? now]) {
+  final start = classStartDate(data);
+  if (start == null) return 9999;
+  final clock = now ?? DateTime.now();
+  final today = DateTime(clock.year, clock.month, clock.day);
+  final day = DateTime(start.year, start.month, start.day);
+  return day.difference(today).inDays;
+}
+
+String startCountdown(Map<String, dynamic> data, [DateTime? now]) {
+  final days = daysUntilStart(data, now);
+  if (days <= 0) return 'Starts today';
+  if (days == 1) return 'Starts in 1 day';
+  return 'Starts in $days days';
+}
+
+/// Free demo or trial classes whose start date is today through the next 10 days.
+List<Map<String, dynamic>> demosStartingSoon(
+  Iterable<Map<String, dynamic>> items, [
+  DateTime? now,
+]) {
+  final soon = items.where((item) {
+    if (!isDemoListing(item)) return false;
+    final days = daysUntilStart(item, now);
+    return days >= 0 && days <= 10;
+  }).toList();
+  soon.sort((a, b) => daysUntilStart(a, now).compareTo(daysUntilStart(b, now)));
+  return soon;
 }
 
 const _photos = <String, List<String>>{
@@ -288,4 +328,22 @@ const _specs = <_Spec>[
   _Spec(format: 'competition', categoryId: 'curriculum', subcategory: 'Maths', title: 'CBSE maths sprint', educator: 'Sneha Iyengar', price: 200, area: 'Whitefield', rating: 4.6, enrolled: 93, postedDaysAgo: 6, startsInDays: 7, blurb: 'Twenty questions, class 10. Working shown, not just answers.'),
   _Spec(format: 'competition', categoryId: 'yoga', subcategory: 'Hatha Yoga', title: 'Asana challenge', educator: 'Ananya Shetty', price: 250, area: 'Jayanagar', rating: 4.8, enrolled: 67, postedDaysAgo: 8, startsInDays: 11, blurb: 'Hold, align, and a short routine. Judged kindly.'),
   _Spec(format: 'competition', categoryId: 'language', subcategory: 'Kannada', title: 'Kannada elocution', educator: 'Divya Rao', price: 100, area: 'Malleswaram', rating: 4.7, enrolled: 54, postedDaysAgo: 9, startsInDays: 13, blurb: 'Two minutes on a neighbourhood you love. School and open groups.'),
+
+  // Free demo / trial classes starting within the next 10 days.
+  _Spec(format: 'online', categoryId: 'music', subcategory: 'Vocal — Hindustani', title: 'Hindustani demo, one raag', educator: 'Meera Rao', price: 0, area: '', rating: 4.8, enrolled: 18, postedDaysAgo: 1, startsInDays: 0, blurb: 'A free 30-minute trial. Hear a raag and try the first swaras.', demo: true),
+  _Spec(format: 'physical', categoryId: 'yoga', subcategory: 'Yoga for beginners', title: 'Yoga trial, Koramangala', educator: 'Ananya Shetty', price: 0, area: 'Koramangala', rating: 4.9, enrolled: 12, postedDaysAgo: 0, startsInDays: 1, blurb: 'One free class on the mat. Wear clothes you can move in.', demo: true),
+  _Spec(format: 'online', categoryId: 'language', subcategory: 'Kannada', title: 'Kannada taster', educator: 'Divya Rao', price: 0, area: '', rating: 4.7, enrolled: 22, postedDaysAgo: 2, startsInDays: 2, blurb: 'Greet a neighbour. A free half hour for new Bangaloreans.', demo: true),
+  _Spec(format: 'physical', categoryId: 'arts', subcategory: 'Painting', title: 'Watercolour trial hour', educator: 'Ritu Malhotra', price: 0, area: 'Indiranagar', rating: 4.6, enrolled: 9, postedDaysAgo: 1, startsInDays: 3, blurb: 'Paper and paint are on the table. Leave with one wash.', demo: true),
+  _Spec(format: 'online', categoryId: 'foreign_languages', subcategory: 'French', title: 'French demo conversation', educator: 'Julien Pereira', price: 0, area: '', rating: 4.7, enrolled: 15, postedDaysAgo: 3, startsInDays: 4, blurb: 'Order a coffee in French. No homework, cameras welcome.', demo: true),
+  _Spec(format: 'physical', categoryId: 'sports', subcategory: 'Badminton', title: 'Badminton trial, HSR', educator: 'Sanjay Gowda', price: 0, area: 'HSR Layout', rating: 4.5, enrolled: 11, postedDaysAgo: 2, startsInDays: 5, blurb: 'A free court hour. Rackets are here if you do not have one.', demo: true),
+  _Spec(format: 'online', categoryId: 'meditation', subcategory: 'Breath meditation', title: 'Breath demo at dusk', educator: 'Suresh Pai', price: 0, area: '', rating: 4.9, enrolled: 27, postedDaysAgo: 4, startsInDays: 6, blurb: 'Twenty quiet minutes. Stay for the sit, leave when it ends.', demo: true),
+  _Spec(format: 'physical', categoryId: 'music', subcategory: 'Dance', title: 'Dance trial, Jayanagar', educator: 'Niharika Rao', price: 0, area: 'Jayanagar', rating: 4.6, enrolled: 14, postedDaysAgo: 1, startsInDays: 7, blurb: 'One song, no partner. A free evening to see if the class fits.', demo: true),
+  _Spec(format: 'online', categoryId: 'curriculum', subcategory: 'Maths', title: 'Maths doubt demo', educator: 'Sneha Iyengar', price: 0, area: '', rating: 4.8, enrolled: 19, postedDaysAgo: 5, startsInDays: 8, blurb: 'Bring one class 10 question. A free session to see the method.', demo: true),
+  _Spec(format: 'physical', categoryId: 'workshop', subcategory: 'Skill-building workshop', title: 'Speaking trial, Whitefield', educator: 'Ayesha Siddiqui', price: 0, area: 'Whitefield', rating: 4.6, enrolled: 8, postedDaysAgo: 2, startsInDays: 9, blurb: 'A two-minute talk and kind notes. Free for first-timers.', demo: true),
+
+  // Events, so the Events tile has a real count.
+  _Spec(format: 'event', categoryId: 'music', subcategory: 'Vocal — Hindustani', title: 'Raag evening, Indiranagar', educator: 'Meera Rao', price: 300, area: 'Indiranagar', rating: 4.8, enrolled: 64, postedDaysAgo: 1, startsInDays: 4, blurb: 'An evening of short pieces. Seats are limited.'),
+  _Spec(format: 'event', categoryId: 'yoga', subcategory: 'Hatha Yoga', title: 'Sunrise yoga, Cubbon', educator: 'Lakshmi Bhat', price: 0, area: 'Cubbon Park', rating: 4.9, enrolled: 88, postedDaysAgo: 0, startsInDays: 2, blurb: 'A free outdoor hour. Bring a mat if you have one.'),
+  _Spec(format: 'event', categoryId: 'arts', subcategory: 'Photography', title: 'Photo walk, Jayanagar', educator: 'Nikhil Thomas', price: 200, area: 'Jayanagar', rating: 4.6, enrolled: 31, postedDaysAgo: 3, startsInDays: 6, blurb: 'Meet at the circle, walk, and look at five frames.'),
+  _Spec(format: 'event', categoryId: 'workshop', subcategory: 'Career workshop', title: 'Open house for new learners', educator: 'Megha Reddy', price: 0, area: 'Koramangala', rating: 4.5, enrolled: 40, postedDaysAgo: 2, startsInDays: 8, blurb: 'Meet masters, see rooms, and ask what a first month looks like.'),
 ];

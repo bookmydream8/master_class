@@ -13,6 +13,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'app_theme.dart';
+import 'category_style.dart';
 import 'class_roster_pages.dart';
 import 'madhura_board.dart' as board;
 import 'member_id.dart';
@@ -330,15 +331,24 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> {
   final expertDetails = TextEditingController();
+  final phoneField = TextEditingController();
+  final cityField = TextEditingController();
+  final topicInterests = <String>{};
   String profileCity = '';
   String profilePhone = '';
   String mcId = '';
+  String role = 'Learner';
   bool loading = true;
   bool saving = false;
   bool editing = false;
   String? error;
   XFile? selectedPhoto;
   User get user => FirebaseAuth.instance.currentUser!;
+
+  bool get signedIn {
+    final current = FirebaseAuth.instance.currentUser;
+    return current != null && !current.isAnonymous;
+  }
 
   @override
   void initState() {
@@ -349,28 +359,51 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void dispose() {
     expertDetails.dispose();
+    phoneField.dispose();
+    cityField.dispose();
     super.dispose();
   }
 
   Future<void> load() async {
-    final signedIn = FirebaseAuth.instance.currentUser;
-    if (signedIn == null || signedIn.isAnonymous) {
+    final current = FirebaseAuth.instance.currentUser;
+    if (current == null || current.isAnonymous) {
       mcId = widget.previewMcId ?? '';
-      profileCity = widget.previewMcId == null ? '' : 'Bangalore';
+      phoneField.text = '9845011122';
+      cityField.text = 'Bangalore';
+      profilePhone = phoneField.text;
+      profileCity = cityField.text;
+      expertDetails.text =
+          'Hindustani vocals and small-group music classes in Bangalore.';
+      topicInterests
+        ..clear()
+        ..addAll(['Music', 'Yoga']);
+      role = 'Learner';
       if (mounted) setState(() => loading = false);
       return;
     }
     try {
       try {
-        mcId = await ensureMemberId(signedIn);
+        mcId = await ensureMemberId(current);
       } catch (_) {}
-      final data = (await firestore.collection('profiles').doc(signedIn.uid).get())
+      final data = (await firestore.collection('profiles').doc(current.uid).get())
           .data();
       expertDetails.text = (data?['expertDetails'] ?? '').toString();
       profileCity = (data?['city'] ?? '').toString();
       profilePhone = (data?['phoneNumber'] ?? '').toString();
+      phoneField.text = profilePhone;
+      cityField.text = profileCity;
       final stored = (data?['mcId'] ?? '').toString();
       if (stored.isNotEmpty) mcId = stored;
+      final storedRole = (data?['role'] ?? '').toString();
+      role = storedRole == 'Master' ? 'Master' : 'Learner';
+      final rawInterests = data?['topicInterests'];
+      topicInterests
+        ..clear()
+        ..addAll(
+          rawInterests is List
+              ? rawInterests.map((item) => item.toString()).where((item) => item.isNotEmpty)
+              : const [],
+        );
     } catch (_) {
       // A profile document may not exist yet. The form remains usable.
     } finally {
@@ -396,6 +429,18 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 
   void save() {
+    profilePhone = phoneField.text.trim();
+    profileCity = cityField.text.trim();
+    if (!signedIn) {
+      setState(() {
+        saving = false;
+        editing = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Sign in to save this profile.')),
+      );
+      return;
+    }
     setState(() {
       saving = true;
       error = null;
@@ -406,6 +451,11 @@ class _ProfilePageState extends State<ProfilePage> {
       'pictureUrl': user.photoURL ?? '',
       'expertDetails': expertDetails.text.trim(),
       'email': user.email,
+      'phoneNumber': profilePhone,
+      'city': profileCity,
+      'preferredPhysicalCity': profileCity,
+      'topicInterests': topicInterests.toList(),
+      'role': role,
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
     unawaited(
@@ -454,23 +504,14 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
-  Widget _previewProfile(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        const Center(
-          child: Text(
-            'Demo Member',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w800),
-          ),
-        ),
-        const SizedBox(height: 8),
-        const Center(child: Text('Bangalore')),
-        const SizedBox(height: 16),
-        if (mcId.isNotEmpty) McIdBanner(mcId: mcId),
-      ],
-    );
-  }
+  String get displayName =>
+      signedIn ? (user.displayName ?? 'Google account') : 'Demo Member';
+
+  String get displayEmail => signedIn
+      ? (user.email ?? 'No email available')
+      : 'demo.member@masterclass.app';
+
+  String get photoUrl => signedIn ? (user.photoURL ?? '') : '';
 
   @override
   Widget build(BuildContext context) => Scaffold(
@@ -496,49 +537,57 @@ class _ProfilePageState extends State<ProfilePage> {
     ),
     body: loading
         ? const Center(child: CircularProgressIndicator())
-        : FirebaseAuth.instance.currentUser == null && widget.previewMcId != null
-        ? _previewProfile(context)
         : ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              Center(
+              if (mcId.isNotEmpty) ...[
+                McIdBanner(mcId: mcId),
+                const SizedBox(height: 14),
+              ],
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: appCardDecoration(context, radius: 20),
                 child: Column(
                   children: [
                     _Avatar(
-                      url: user.photoURL ?? '',
-                      name: user.displayName ?? user.email ?? '',
+                      url: photoUrl,
+                      name: displayName,
                       localPhoto: selectedPhoto == null
                           ? null
                           : File(selectedPhoto!.path),
                     ),
                     const SizedBox(height: 12),
-                    if (mcId.isNotEmpty) ...[
-                      McIdBanner(mcId: mcId),
-                      const SizedBox(height: 12),
-                    ],
                     Text(
-                      user.displayName ?? 'Google account',
+                      displayName,
                       textAlign: TextAlign.center,
                       style: Theme.of(context).textTheme.headlineSmall,
                     ),
-                    if (profileCity.isNotEmpty) ...[
-                      const SizedBox(height: 5),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(
-                            Icons.location_on_outlined,
-                            size: 16,
-                            color: Color(0xFF8B8B8B),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      alignment: WrapAlignment.center,
+                      spacing: 8,
+                      runSpacing: 6,
+                      children: [
+                        _RoleChip(role: role),
+                        if (profileCity.isNotEmpty)
+                          Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.location_on_outlined,
+                                size: 16,
+                                color: AppPalette.of(context).muted,
+                              ),
+                              const SizedBox(width: 3),
+                              Text(
+                                profileCity,
+                                style: TextStyle(color: AppPalette.of(context).muted),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 3),
-                          Text(
-                            profileCity,
-                            style: const TextStyle(color: Color(0xFF8B8B8B)),
-                          ),
-                        ],
-                      ),
-                    ],
+                      ],
+                    ),
                   ],
                 ),
               ),
@@ -558,22 +607,49 @@ class _ProfilePageState extends State<ProfilePage> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const _ProfileLabel('CONTACT & EXPERTISE'),
+                    const _ProfileLabel('CONTACT'),
                     _ProfileInfoRow(
                       icon: Icons.mail_outline,
                       label: 'Email',
-                      value: user.email ?? 'No email available',
+                      value: displayEmail,
                     ),
-                    if (profilePhone.isNotEmpty) ...[
-                      const Divider(height: 1, color: Color(0xFFECECEC)),
+                    const Divider(height: 1),
+                    if (editing)
+                      TextField(
+                        controller: phoneField,
+                        keyboardType: TextInputType.phone,
+                        decoration: _field(context, 'Phone number'),
+                      )
+                    else
                       _ProfileInfoRow(
                         icon: Icons.call_outlined,
                         label: 'Phone',
-                        value: profilePhone,
+                        value: profilePhone.isEmpty ? 'Not added yet' : profilePhone,
                       ),
-                    ],
-                    const Divider(height: 24, color: Color(0xFFECECEC)),
-                    const _ProfileLabel('EXPERT DETAILS'),
+                    if (!editing) const Divider(height: 1),
+                    if (editing)
+                      TextField(
+                        controller: cityField,
+                        textCapitalization: TextCapitalization.words,
+                        decoration: _field(context, 'City'),
+                      )
+                    else
+                      _ProfileInfoRow(
+                        icon: Icons.location_city_outlined,
+                        label: 'City',
+                        value: profileCity.isEmpty ? 'Not added yet' : profileCity,
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: appCardDecoration(context, radius: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const _ProfileLabel('BIO'),
                     if (editing)
                       TextField(
                         controller: expertDetails,
@@ -585,26 +661,77 @@ class _ProfilePageState extends State<ProfilePage> {
                         ),
                       )
                     else
-                      Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(14),
-                        decoration: BoxDecoration(
-                          color: AppPalette.of(context).canvas,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: AppPalette.of(context).line),
+                      Text(
+                        expertDetails.text.trim().isEmpty
+                            ? 'Add your skills and teaching experience to introduce yourself to learners.'
+                            : expertDetails.text.trim(),
+                        style: TextStyle(
+                          height: 1.45,
+                          fontSize: 14,
+                          color: expertDetails.text.trim().isEmpty
+                              ? AppPalette.of(context).muted
+                              : AppPalette.of(context).ink,
                         ),
-                        child: Text(
-                          expertDetails.text.trim().isEmpty
-                              ? 'Add your skills and teaching experience to introduce yourself to learners.'
-                              : expertDetails.text.trim(),
-                          style: TextStyle(
-                            height: 1.45,
-                            fontSize: 14,
-                            color: expertDetails.text.trim().isEmpty
-                                ? AppPalette.of(context).muted
-                                : AppPalette.of(context).ink,
-                          ),
-                        ),
+                      ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: appCardDecoration(context, radius: 20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const _ProfileLabel('ROLE'),
+                    if (editing)
+                      Wrap(
+                        spacing: 8,
+                        children: [
+                          for (final option in const ['Learner', 'Master'])
+                            ChoiceChip(
+                              label: Text(option),
+                              selected: role == option,
+                              onSelected: (_) => setState(() => role = option),
+                            ),
+                        ],
+                      )
+                    else
+                      Text(role, style: Theme.of(context).textTheme.titleSmall),
+                    const SizedBox(height: 16),
+                    const _ProfileLabel('INTERESTS'),
+                    if (editing)
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final name in board.categories.keys)
+                            FilterChip(
+                              label: Text(name),
+                              selected: topicInterests.contains(name),
+                              onSelected: (selected) => setState(() {
+                                if (selected) {
+                                  topicInterests.add(name);
+                                } else {
+                                  topicInterests.remove(name);
+                                }
+                              }),
+                            ),
+                        ],
+                      )
+                    else if (topicInterests.isEmpty)
+                      Text(
+                        'No interests yet.',
+                        style: TextStyle(color: AppPalette.of(context).muted),
+                      )
+                    else
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          for (final name in topicInterests)
+                            Chip(label: Text(name), visualDensity: VisualDensity.compact),
+                        ],
                       ),
                     if (error != null)
                       Padding(
@@ -689,7 +816,13 @@ class _ProfilePageState extends State<ProfilePage> {
                   label: const Text('All class fees'),
                 ),
               ),
-              StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              if (!signedIn)
+                Text(
+                  'No classes posted yet.',
+                  style: TextStyle(color: AppPalette.of(context).muted),
+                )
+              else
+                StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                 stream: firestore
                     .collection('listings')
                     .where('creatorId', isEqualTo: user.uid)
@@ -739,7 +872,13 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
               const SizedBox(height: 18),
               const _ProfileLabel('MY INTERESTED CLASSES'),
-              StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+              if (!signedIn)
+                Text(
+                  'No class interests yet.',
+                  style: TextStyle(color: AppPalette.of(context).muted),
+                )
+              else
+                StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                 stream: firestore
                     .collectionGroup('interests')
                     .where('userId', isEqualTo: user.uid)
@@ -780,6 +919,12 @@ class _ProfilePageState extends State<ProfilePage> {
               Card(
                 child: ListTile(
                   onTap: () async {
+                    if (!signedIn) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Sign in to use this account.')),
+                      );
+                      return;
+                    }
                     await FirebaseAuth.instance.signOut();
                     await _googleSignIn.signOut();
                     if (!context.mounted) return;
@@ -806,6 +951,28 @@ class _ProfilePageState extends State<ProfilePage> {
             ],
           ),
   );
+}
+
+class _RoleChip extends StatelessWidget {
+  const _RoleChip({required this.role});
+
+  final String role;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = categoryStyleForId(role == 'Master' ? 'yoga' : 'language');
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: style.tint,
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        role,
+        style: Theme.of(context).textTheme.labelMedium?.copyWith(color: style.ink),
+      ),
+    );
+  }
 }
 
 class _PostedClassCard extends StatelessWidget {

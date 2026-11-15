@@ -645,6 +645,329 @@ class _Rail extends StatelessWidget {
   }
 }
 
+class LearnYourWay extends StatelessWidget {
+  const LearnYourWay({super.key, required this.listings, required this.onOpen});
+
+  final List<Map<String, dynamic>> listings;
+  final ValueChanged<String> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final colors = AppPalette.of(context);
+    final tiles = [
+      (
+        format: 'online',
+        title: 'Online',
+        icon: Icons.laptop_mac_rounded,
+        style: categoryStyleForId('language'),
+      ),
+      (
+        format: 'physical',
+        title: 'Physical',
+        icon: Icons.place_rounded,
+        style: categoryStyleForId('yoga'),
+      ),
+      (
+        format: 'competition',
+        title: 'Competition',
+        icon: Icons.emoji_events_rounded,
+        style: categoryStyleForId('sports'),
+      ),
+      (
+        format: 'event',
+        title: 'Events',
+        icon: Icons.celebration_rounded,
+        style: categoryStyleForId('workshop'),
+      ),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Learn your way', style: text.titleLarge),
+        const SizedBox(height: 4),
+        Text(
+          'Pick a format to browse',
+          style: text.bodySmall?.copyWith(color: colors.muted),
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 168,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: tiles.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 12),
+            itemBuilder: (context, index) {
+              final tile = tiles[index];
+              final count = listings
+                  .where((item) => board.listingFormat(item) == tile.format)
+                  .length;
+              final noun = tile.format == 'event'
+                  ? (count == 1 ? 'event' : 'events')
+                  : (count == 1 ? 'class' : 'classes');
+              return _FormatTile(
+                title: tile.title,
+                countLabel: '$count $noun',
+                icon: tile.icon,
+                gradient: tile.style.gradient,
+                onTap: () => onOpen(tile.format),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _FormatTile extends StatelessWidget {
+  const _FormatTile({
+    required this.title,
+    required this.countLabel,
+    required this.icon,
+    required this.gradient,
+    required this.onTap,
+  });
+
+  final String title;
+  final String countLabel;
+  final IconData icon;
+  final List<Color> gradient;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    return SizedBox(
+      width: 156,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(22),
+          child: Ink(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(22),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: gradient,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: gradient.last.withValues(alpha: 0.28),
+                  blurRadius: 16,
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 14, 12, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(icon, color: Colors.white, size: 36),
+                  const Spacer(),
+                  Text(
+                    title,
+                    style: text.titleMedium?.copyWith(color: Colors.white),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    countLabel,
+                    style: text.bodySmall?.copyWith(
+                      color: Colors.white.withValues(alpha: 0.9),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: Container(
+                      width: 28,
+                      height: 28,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.22),
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.arrow_forward_rounded,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class DemoClassesSoon extends StatelessWidget {
+  const DemoClassesSoon({super.key, required this.listings, required this.onOpen});
+
+  final List<Map<String, dynamic>> listings;
+  final ValueChanged<Map<String, dynamic>> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final colors = AppPalette.of(context);
+    final demos = demosStartingSoon(listings);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Demo classes starting soon', style: text.titleLarge),
+        const SizedBox(height: 4),
+        Text(
+          'Free trials in the next 10 days',
+          style: text.bodySmall?.copyWith(color: colors.muted),
+        ),
+        const SizedBox(height: 12),
+        if (demos.isEmpty)
+          Text(
+            'No demos in the next 10 days.',
+            style: text.bodyMedium?.copyWith(color: colors.muted),
+          )
+        else
+          SizedBox(
+            height: 280,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: demos.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 12),
+              itemBuilder: (context, index) {
+                return _DemoCard(data: demos[index], onOpen: () => onOpen(demos[index]));
+              },
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _DemoCard extends StatelessWidget {
+  const _DemoCard({required this.data, required this.onOpen});
+
+  final Map<String, dynamic> data;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final style = categoryStyleFor(data);
+    final title = (data['title'] ?? 'Demo class').toString();
+    final educator = (data['creatorName'] ?? '').toString();
+    final imageUrl = (data['image_url'] ?? '').toString();
+    final categoryId = (data['category'] ?? '').toString();
+    final categoryName = board.categoryIds.entries
+            .where((entry) => entry.value == categoryId)
+            .map((entry) => entry.key)
+            .firstOrNull ??
+        categoryId;
+    return SizedBox(
+      width: 230,
+      child: Material(
+        color: AppPalette.of(context).card,
+        elevation: 0,
+        borderRadius: BorderRadius.circular(22),
+        child: InkWell(
+          onTap: onOpen,
+          borderRadius: BorderRadius.circular(22),
+          child: Ink(
+            decoration: appCardDecoration(context, radius: 22),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                ClipRRect(
+                  borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+                  child: SizedBox(
+                    height: 96,
+                    width: double.infinity,
+                    child: Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        _Cover(
+                          url: imageUrl,
+                          tint: style.tint,
+                          icon: style.icon,
+                          ink: style.ink,
+                        ),
+                        Positioned(
+                          left: 10,
+                          top: 10,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: style.ink,
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              startCountdown(data),
+                              style: text.labelSmall?.copyWith(color: Colors.white),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        categoryName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: text.labelSmall?.copyWith(color: style.ink),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: text.titleSmall,
+                      ),
+                      if (educator.isNotEmpty)
+                        Text(
+                          educator,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: text.bodySmall?.copyWith(
+                            color: AppPalette.of(context).muted,
+                          ),
+                        ),
+                      const SizedBox(height: 8),
+                      SizedBox(
+                        width: double.infinity,
+                        child: FilledButton(
+                          onPressed: onOpen,
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size.fromHeight(36),
+                            padding: const EdgeInsets.symmetric(horizontal: 12),
+                            backgroundColor: style.gradient.first,
+                            foregroundColor: Colors.white,
+                          ),
+                          child: const Text('Book free demo'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class FreshPostsSheet extends StatelessWidget {
   const FreshPostsSheet({super.key, required this.controller, required this.onOpen});
 
