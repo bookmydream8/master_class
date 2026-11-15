@@ -43,6 +43,9 @@ dependencies:
   image_picker: ^1.2.1
   image_cropper: ^9.1.0
   url_launcher: ^6.3.2
+  google_fonts: ^6.3.2
+  cached_network_image: ^3.4.1
+  shared_preferences: ^2.5.3
 
 dev_dependencies:
   flutter_test:

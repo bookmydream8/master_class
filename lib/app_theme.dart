@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 /// Calm studio palette for Master Class.
 ///
@@ -187,11 +188,16 @@ class AppTheme {
           ? const Color(0xFF354044)
           : const Color(0xFFDCE6E6),
     );
-    final baseText = ThemeData(
+    final seedText = ThemeData(
       brightness: brightness,
       useMaterial3: true,
     ).textTheme;
-    final text = _textTheme(baseText, palette.ink, palette.muted);
+    final text = _textTheme(
+      GoogleFonts.plusJakartaSansTextTheme(seedText),
+      GoogleFonts.interTextTheme(seedText),
+      palette.ink,
+      palette.muted,
+    );
     final radius = BorderRadius.circular(16);
     final outline = OutlineInputBorder(
       borderRadius: radius,
@@ -377,70 +383,75 @@ class AppTheme {
     );
   }
 
-  static TextTheme _textTheme(TextTheme base, Color ink, Color muted) {
+  static TextTheme _textTheme(
+    TextTheme headings,
+    TextTheme body,
+    Color ink,
+    Color muted,
+  ) {
     TextStyle? paint(TextStyle? style, Color color) =>
         style?.copyWith(color: color);
-    return base.copyWith(
-      displaySmall: paint(base.displaySmall, ink)?.copyWith(
+    return headings.copyWith(
+      displaySmall: paint(headings.displaySmall, ink)?.copyWith(
         fontSize: 32,
         height: 1.15,
         fontWeight: FontWeight.w700,
         letterSpacing: -0.4,
       ),
-      headlineMedium: paint(base.headlineMedium, ink)?.copyWith(
+      headlineMedium: paint(headings.headlineMedium, ink)?.copyWith(
         fontSize: 26,
         height: 1.2,
         fontWeight: FontWeight.w700,
         letterSpacing: -0.3,
       ),
-      headlineSmall: paint(base.headlineSmall, ink)?.copyWith(
+      headlineSmall: paint(headings.headlineSmall, ink)?.copyWith(
         fontSize: 22,
         height: 1.2,
         fontWeight: FontWeight.w700,
         letterSpacing: -0.2,
       ),
-      titleLarge: paint(base.titleLarge, ink)?.copyWith(
+      titleLarge: paint(headings.titleLarge, ink)?.copyWith(
         fontSize: 20,
         height: 1.25,
         fontWeight: FontWeight.w700,
       ),
-      titleMedium: paint(base.titleMedium, ink)?.copyWith(
+      titleMedium: paint(headings.titleMedium, ink)?.copyWith(
         fontSize: 16,
         height: 1.3,
         fontWeight: FontWeight.w700,
       ),
-      titleSmall: paint(base.titleSmall, ink)?.copyWith(
+      titleSmall: paint(headings.titleSmall, ink)?.copyWith(
         fontSize: 14,
         height: 1.3,
         fontWeight: FontWeight.w700,
       ),
-      bodyLarge: paint(base.bodyLarge, ink)?.copyWith(
+      bodyLarge: paint(body.bodyLarge, ink)?.copyWith(
         fontSize: 16,
         height: 1.5,
         fontWeight: FontWeight.w400,
       ),
-      bodyMedium: paint(base.bodyMedium, ink)?.copyWith(
+      bodyMedium: paint(body.bodyMedium, ink)?.copyWith(
         fontSize: 14,
         height: 1.45,
         fontWeight: FontWeight.w400,
       ),
-      bodySmall: paint(base.bodySmall, muted)?.copyWith(
+      bodySmall: paint(body.bodySmall, muted)?.copyWith(
         fontSize: 13,
         height: 1.4,
         fontWeight: FontWeight.w400,
       ),
-      labelLarge: paint(base.labelLarge, ink)?.copyWith(
+      labelLarge: paint(headings.labelLarge, ink)?.copyWith(
         fontSize: 14,
         height: 1.2,
         fontWeight: FontWeight.w700,
         letterSpacing: 0.1,
       ),
-      labelMedium: paint(base.labelMedium, ink)?.copyWith(
+      labelMedium: paint(headings.labelMedium, ink)?.copyWith(
         fontSize: 13,
         height: 1.2,
         fontWeight: FontWeight.w600,
       ),
-      labelSmall: paint(base.labelSmall, muted)?.copyWith(
+      labelSmall: paint(headings.labelSmall, muted)?.copyWith(
         fontSize: 12,
         height: 1.2,
         fontWeight: FontWeight.w600,

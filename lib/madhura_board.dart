@@ -7,9 +7,13 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'firestore_database.dart';
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_theme.dart';
+import 'category_style.dart';
+import 'home_catalogue.dart';
 import 'master_class_app.dart' show showPostSheet;
+import 'seed/bangalore_demo.dart';
 import 'madhura_detail.dart' show MasterClassDetailPage, showMasterClassDetails;
 import 'auth_profile.dart' show ProfilePage, requireLogin;
 import 'community_posts.dart'
@@ -215,10 +219,21 @@ bool isActiveCommunityListing(Map<String, dynamic> data) {
 }
 
 class MasterClassBoard extends StatefulWidget {
-  const MasterClassBoard({super.key, this.initialTab = 0});
+  const MasterClassBoard({
+    super.key,
+    this.initialTab = 0,
+    this.initialFormat,
+    this.showFreshOnStart = true,
+  });
 
   /// Opens Home, Classes, Community, or Profile. Defaults to Home.
   final int initialTab;
+
+  /// When set, opens Classes on this format (online, physical, competition, event).
+  final String? initialFormat;
+
+  /// The "just posted" sheet appears once per session unless this is false.
+  final bool showFreshOnStart;
 
   @override
   State<MasterClassBoard> createState() => _MasterClassBoardState();
@@ -252,9 +267,20 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
     super.initState();
     final requestedTab = widget.initialTab;
     _tab = requestedTab < 0 ? 0 : (requestedTab > 3 ? 3 : requestedTab);
-    if (_tab == 1) {
+    final format = widget.initialFormat;
+    if (format != null) {
+      _tab = 1;
+      _browseFormat = format;
+      selectedFormats
+        ..clear()
+        ..add(format);
+      if (format != 'online') city = savedPhysicalCity;
+      _loadListings(reset: true);
+    } else if (_tab == 1) {
       _browseFormat = 'online';
       _loadListings(reset: true);
+    } else if (_tab == 0 && widget.showFreshOnStart) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _showFreshPosts());
     }
     _loadPreferredCity();
     _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
@@ -508,10 +534,20 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
     return query.isEmpty || words.contains(query);
   }
 
-  Widget _buildListingFeed() {
-    final listings = _listingDocs
+  List<Map<String, dynamic>> _visibleListings() {
+    final live = _listingDocs
         .where((doc) => !isExpired(doc.data()) && matches(doc.data()))
+        .map((doc) => {...doc.data(), 'id': doc.id})
         .toList();
+    if (_listingDocs.isNotEmpty) return live;
+    return bangaloreDemoListings()
+        .where((data) => !isExpired(data) && matches(data))
+        .toList();
+  }
+
+  Widget _buildListingFeed() {
+    final listings = _visibleListings();
+    final usingDemo = _listingDocs.isEmpty;
     final colors = AppPalette.of(context);
     final text = Theme.of(context).textTheme;
     final heading = category == null
@@ -539,7 +575,7 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
           ),
           const SizedBox(height: 4),
           Text(
-            _loadingListings
+            !usingDemo && _loadingListings
                 ? 'Loading classes…'
                 : '${listings.length} ${listings.length == 1 ? 'class' : 'classes'}',
             style: text.bodySmall?.copyWith(color: colors.muted),
@@ -576,14 +612,14 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
             ],
           ),
           const SizedBox(height: 16),
-          if (_listingError != null)
+          if (!usingDemo && _listingError != null && listings.isEmpty)
             _Notice(
               'Could not load classes',
               _listingError!,
               actionLabel: 'Try again',
               onPost: () => _loadListings(reset: true),
             )
-          else if (_loadingListings)
+          else if (!usingDemo && _loadingListings && listings.isEmpty)
             const AppLoading(message: 'Loading classes')
           else if (listings.isEmpty)
             _Notice(
@@ -592,12 +628,16 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
               onPost: () => openPost(context),
             )
           else
-            for (final doc in listings)
-              _CompactClassCard({
-                ...doc.data(),
-                'id': doc.id,
-              }, onDeleted: () => _loadListings(reset: true)),
-          if (!_loadingListings && _hasMoreListings) ...[
+            for (final data in listings) ...[
+              CourseCard(
+                data: data,
+                onTap: () async {
+                  if (await openClass(context, data)) _loadListings(reset: true);
+                },
+              ),
+              const SizedBox(height: 14),
+            ],
+          if (!usingDemo && !_loadingListings && _hasMoreListings) ...[
             const SizedBox(height: 4),
             OutlinedButton(
               onPressed: _loadingMore ? null : _loadListings,
@@ -769,7 +809,6 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
   }
 
   @override
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       body: switch (_tab) {
@@ -874,45 +913,7 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
           ),
         ),
         const SizedBox(height: 16),
-        Material(
-          color: colors.accentSoft,
-          borderRadius: BorderRadius.circular(24),
-          child: InkWell(
-            onTap: () => _openBrowse('online'),
-            borderRadius: BorderRadius.circular(24),
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'DISCOVER',
-                    style: text.labelSmall?.copyWith(
-                      color: colors.onAccentSoft,
-                      letterSpacing: 1.1,
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    'Find your next master class',
-                    style: text.headlineSmall?.copyWith(color: colors.ink),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Online lessons, nearby classes, competitions, and events.',
-                    style: text.bodyMedium?.copyWith(color: colors.muted),
-                  ),
-                  const SizedBox(height: 14),
-                  FilledButton.tonalIcon(
-                    onPressed: () => _openBrowse('online'),
-                    icon: const Icon(Icons.arrow_forward, size: 18),
-                    label: const Text('Explore classes'),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
+        PromoCarousel(onOpen: _openBrowse),
         const SizedBox(height: 22),
         Text('Learn your way', style: text.titleLarge),
         const SizedBox(height: 4),
@@ -948,7 +949,7 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
                       icon: Icons.laptop_mac_outlined,
                       title: 'Online',
                       subtitle: 'Learn anywhere',
-                      color: colors.onlineWell,
+                      color: categoryStyleForId('language').well(Theme.of(context).brightness),
                       format: 'online',
                     ),
                     const SizedBox(width: 12),
@@ -956,7 +957,7 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
                       icon: Icons.location_on_outlined,
                       title: 'Physical',
                       subtitle: 'Meet nearby',
-                      color: colors.physicalWell,
+                      color: categoryStyleForId('yoga').well(Theme.of(context).brightness),
                       format: 'physical',
                     ),
                   ],
@@ -968,7 +969,7 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
                       icon: Icons.emoji_events_outlined,
                       title: 'Competition',
                       subtitle: 'Show your skills',
-                      color: colors.competitionWell,
+                      color: categoryStyleForId('sports').well(Theme.of(context).brightness),
                       format: 'competition',
                     ),
                     const SizedBox(width: 12),
@@ -976,7 +977,7 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
                       icon: Icons.event_outlined,
                       title: 'Events',
                       subtitle: 'What\'s on',
-                      color: colors.eventWell,
+                      color: categoryStyleForId('workshop').well(Theme.of(context).brightness),
                       format: 'event',
                     ),
                   ],
@@ -985,6 +986,10 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
             );
           },
         ),
+        const SizedBox(height: 18),
+        AppSectionHeader(title: 'Browse by subject'),
+        const SizedBox(height: 12),
+        HomeCategoryRail(onOpen: (name) => _openBrowse('online', focusCategory: name)),
         const SizedBox(height: 22),
         _communityEntry(
           context,
@@ -1004,7 +1009,10 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
           onTap: () => openRequests(context),
         ),
         const SizedBox(height: 22),
-        _HomeFeaturedClasses(onExplore: () => _openBrowse('online')),
+        HomeCatalogue(
+          onOpen: (data) => showMasterClassDetails(context, data),
+          onSeeAll: () => _openBrowse('online'),
+        ),
       ],
     );
   }
@@ -1075,20 +1083,63 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
     setState(() => _tab = index);
   }
 
-  void _openBrowse(String format) {
+  void _openBrowse(String format, {String? focusCategory}) {
     final changingFormat = _browseFormat != format;
     _selectFormats({format});
     setState(() {
       _browseFormat = format;
       _tab = 1;
       if (changingFormat) {
-        category = null;
+        category = focusCategory;
         focus = null;
         freeOnly = false;
         search.clear();
+      } else if (focusCategory != null) {
+        category = focusCategory;
+        focus = null;
       }
     });
     _loadListings(reset: true);
+  }
+
+  Future<void> _showFreshPosts() async {
+    if (!mounted || _tab != 0) return;
+    final show = await _claimFreshPostsPrompt();
+    if (!mounted || !show || _tab != 0) return;
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (sheetContext) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.52,
+        minChildSize: 0.35,
+        maxChildSize: 0.92,
+        builder: (context, controller) => FreshPostsSheet(
+          controller: controller,
+          onOpen: (data) {
+            Navigator.pop(sheetContext);
+            showMasterClassDetails(sheetContext, data);
+          },
+        ),
+      ),
+    );
+  }
+
+  /// Shows the sheet on at most three Home opens per calendar day.
+  Future<bool> _claimFreshPostsPrompt() async {
+    const dayKey = 'fresh_posts_sheet_day';
+    const countKey = 'fresh_posts_sheet_count';
+    final prefs = await SharedPreferences.getInstance();
+    final now = DateTime.now();
+    final today =
+        '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+    final storedDay = prefs.getString(dayKey);
+    final count = storedDay == today ? (prefs.getInt(countKey) ?? 0) : 0;
+    if (count >= 3) return false;
+    await prefs.setString(dayKey, today);
+    await prefs.setInt(countKey, count + 1);
+    return true;
   }
 
   Widget _buildBrowse(BuildContext context) {
@@ -1603,267 +1654,6 @@ class _Chip extends StatelessWidget {
   }
 }
 
-class _HomeFeaturedClasses extends StatelessWidget {
-  const _HomeFeaturedClasses({required this.onExplore});
-
-  final VoidCallback onExplore;
-
-  Widget _cover(BuildContext context, Map<String, dynamic> data) {
-    final encoded = (data['image_base64'] ?? '').toString();
-    if (encoded.isNotEmpty) {
-      try {
-        return Image.memory(
-          base64Decode(encoded),
-          fit: BoxFit.cover,
-          width: double.infinity,
-          errorBuilder: (_, _, _) => _fallbackCover(context),
-        );
-      } catch (_) {
-        return _fallbackCover(context);
-      }
-    }
-    final url = (data['image_url'] ?? '').toString();
-    if (url.isNotEmpty) {
-      return Image.network(
-        url,
-        fit: BoxFit.cover,
-        width: double.infinity,
-        errorBuilder: (_, _, _) => _fallbackCover(context),
-      );
-    }
-    return _fallbackCover(context);
-  }
-
-  Widget _fallbackCover(BuildContext context) => ColoredBox(
-    color: AppPalette.of(context).imageFallback,
-    child: Center(
-      child: Icon(
-        Icons.auto_stories_outlined,
-        size: 36,
-        color: AppPalette.of(context).accent,
-      ),
-    ),
-  );
-
-  @override
-  Widget build(BuildContext context) {
-    final colors = AppPalette.of(context);
-    final text = Theme.of(context).textTheme;
-    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: firestore
-          .collection('listings')
-          .orderBy('updatedAt', descending: true)
-          .limit(30)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (!snapshot.hasData) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
-            return const AppLoading(message: 'Loading classes');
-          }
-          return const SizedBox.shrink();
-        }
-        bool current(Map<String, dynamic> data) {
-          final format = listingFormat(data);
-          if (!const {
-            'online',
-            'physical',
-            'competition',
-            'event',
-          }.contains(format)) {
-            return false;
-          }
-          final expires = data['expires_at'];
-          return expires is! Timestamp || expires.toDate().isAfter(DateTime.now());
-        }
-
-        final docs = snapshot.data!.docs.where((doc) => current(doc.data())).toList();
-        final today = DateTime.now();
-        final startOfToday = DateTime(today.year, today.month, today.day);
-        bool upcoming(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
-          final data = doc.data();
-          if (listingFormat(data) == 'event') return true;
-          final date = DateTime.tryParse((data['start_date'] ?? '').toString());
-          if (date == null) return false;
-          final day = DateTime(date.year, date.month, date.day);
-          return !day.isBefore(startOfToday);
-        }
-
-        final upcomingDocs = docs.where(upcoming).toList()
-          ..sort((a, b) {
-            final ad = DateTime.tryParse((a.data()['start_date'] ?? '').toString());
-            final bd = DateTime.tryParse((b.data()['start_date'] ?? '').toString());
-            if (ad == null && bd == null) return 0;
-            if (ad == null) return 1;
-            if (bd == null) return -1;
-            return ad.compareTo(bd);
-          });
-        final featured = docs.take(6).toList();
-
-        String educator(Map<String, dynamic> data) {
-          final name = (data['creatorName'] ?? '').toString().trim();
-          if (name.isNotEmpty) return name;
-          final about = (data['about_master'] ?? '').toString().trim();
-          if (about.isEmpty) return '';
-          return about.split('\n').first;
-        }
-
-        String whenLabel(Map<String, dynamic> data) {
-          final date = DateTime.tryParse((data['start_date'] ?? '').toString());
-          if (date == null) {
-            return listingFormat(data) == 'event' ? 'Event' : '';
-          }
-          const months = [
-            'Jan',
-            'Feb',
-            'Mar',
-            'Apr',
-            'May',
-            'Jun',
-            'Jul',
-            'Aug',
-            'Sep',
-            'Oct',
-            'Nov',
-            'Dec',
-          ];
-          final day = DateTime(date.year, date.month, date.day);
-          if (day == startOfToday) return 'Today';
-          if (day == startOfToday.add(const Duration(days: 1))) return 'Tomorrow';
-          return '${date.day} ${months[date.month - 1]}';
-        }
-
-        Widget rail(
-          String title,
-          List<QueryDocumentSnapshot<Map<String, dynamic>>> items, {
-          required bool showDate,
-        }) {
-          if (items.isEmpty) return const SizedBox.shrink();
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              AppSectionHeader(
-                title: title,
-                action: 'See all',
-                onAction: onExplore,
-              ),
-              const SizedBox(height: 10),
-              SizedBox(
-                height: showDate ? 228 : 210,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: items.length,
-                  separatorBuilder: (_, _) => const SizedBox(width: 12),
-                  itemBuilder: (context, index) {
-                    final doc = items[index];
-                    final data = doc.data();
-                    final format = listingFormat(data);
-                    final teacher = educator(data);
-                    final when = whenLabel(data);
-                    return SizedBox(
-                      width: 210,
-                      child: Material(
-                        color: colors.card,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                          side: BorderSide(color: colors.line),
-                        ),
-                        child: InkWell(
-                          onTap: () => showMasterClassDetails(context, {
-                            ...data,
-                            'id': doc.id,
-                          }),
-                          borderRadius: BorderRadius.circular(18),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              ClipRRect(
-                                borderRadius: const BorderRadius.vertical(
-                                  top: Radius.circular(17),
-                                ),
-                                child: SizedBox(
-                                  height: 108,
-                                  width: double.infinity,
-                                  child: _cover(context, data),
-                                ),
-                              ),
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    if (showDate && when.isNotEmpty)
-                                      Container(
-                                        margin: const EdgeInsets.only(bottom: 6),
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 8,
-                                          vertical: 3,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: colors.accentSoft,
-                                          borderRadius: BorderRadius.circular(20),
-                                        ),
-                                        child: Text(
-                                          when,
-                                          style: text.labelSmall?.copyWith(
-                                            color: colors.onAccentSoft,
-                                          ),
-                                        ),
-                                      ),
-                                    Text(
-                                      (data['title'] ?? 'Class').toString(),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: text.titleSmall,
-                                    ),
-                                    if (teacher.isNotEmpty) ...[
-                                      const SizedBox(height: 3),
-                                      Text(
-                                        teacher,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: text.bodySmall?.copyWith(
-                                          color: colors.ink,
-                                        ),
-                                      ),
-                                    ],
-                                    const SizedBox(height: 3),
-                                    Text(
-                                      '${formats[format] ?? 'Class'} · ${data['city'] ?? 'Anywhere'}',
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: text.bodySmall?.copyWith(
-                                        color: colors.muted,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
-              const SizedBox(height: 20),
-            ],
-          );
-        }
-
-        if (docs.isEmpty) return const SizedBox.shrink();
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            rail('Upcoming sessions', upcomingDocs.take(8).toList(), showDate: true),
-            rail('Featured classes', featured, showDate: false),
-          ],
-        );
-      },
-    );
-  }
-}
-
 class _HomeTypeTile extends StatelessWidget {
   const _HomeTypeTile({
     required this.icon,
@@ -1904,7 +1694,7 @@ class _HomeTypeTile extends StatelessWidget {
                     color: color,
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Icon(icon, size: 22, color: colors.wellInk),
+                  child: Icon(icon, size: 22, color: colors.ink),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -1929,196 +1719,6 @@ class _HomeTypeTile extends StatelessWidget {
                       ],
                     ],
                   ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _CompactClassCard extends StatelessWidget {
-  const _CompactClassCard(this.data, {required this.onDeleted});
-  final Map<String, dynamic> data;
-  final VoidCallback onDeleted;
-
-  @override
-  Widget build(BuildContext context) {
-    final format = listingFormat(data);
-    final title = (data['title'] ?? 'Untitled class').toString();
-    final categoryName =
-        categories.keys
-            .where((key) => categoryIds[key] == data['category'])
-            .firstOrNull ??
-        (data['category'] ?? 'Class').toString();
-    final price = listingPrice(data);
-    final imageUrl =
-        (data['image_url'] ?? data['imageUrl'] ?? data['photoUrl'] ?? '')
-            .toString();
-    final imageBase64 = (data['image_base64'] ?? '').toString();
-    final colors = AppPalette.of(context);
-    final text = Theme.of(context).textTheme;
-    final educatorName = (data['creatorName'] ?? '').toString().trim();
-    final about = (data['about_master'] ?? '').toString().trim();
-    final educator = educatorName.isNotEmpty
-        ? educatorName
-        : (about.isEmpty ? '' : about.split('\n').first);
-
-    Widget placeholder() => ColoredBox(
-      color: colors.imageFallback,
-      child: Icon(Icons.auto_stories_outlined, color: colors.accent),
-    );
-
-    Widget imageHeader() {
-      if (imageBase64.isNotEmpty) {
-        return Image.memory(
-          base64Decode(imageBase64),
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stack) => placeholder(),
-        );
-      }
-      if (imageUrl.isNotEmpty) {
-        return Image.network(
-          imageUrl,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stack) => placeholder(),
-        );
-      }
-      return placeholder();
-    }
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 14),
-      child: Material(
-        color: colors.card,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(color: colors.line),
-        ),
-        child: InkWell(
-          onTap: () async {
-            if (await openClass(context, data)) onDeleted();
-          },
-          borderRadius: BorderRadius.circular(18),
-          child: Padding(
-            padding: const EdgeInsets.all(14),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: SizedBox(
-                    width: double.infinity,
-                    height: 150,
-                    child: imageHeader(),
-                  ),
-                ),
-                const SizedBox(height: 11),
-                Row(
-                  children: [
-                    Icon(
-                      format == 'competition'
-                          ? Icons.emoji_events_outlined
-                          : format == 'event'
-                          ? Icons.event_outlined
-                          : format == 'physical'
-                          ? Icons.location_on_outlined
-                          : Icons.laptop_mac_outlined,
-                      size: 16,
-                      color: colors.accent,
-                    ),
-                    const SizedBox(width: 5),
-                    Expanded(
-                      child: Text(
-                        '$categoryName · ${data['subcategory'] ?? ''}'
-                            .replaceAll(RegExp(r' · $'), ''),
-                        style: text.bodySmall?.copyWith(color: colors.muted),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: colors.accentSoft,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        price,
-                        style: text.labelSmall?.copyWith(
-                          color: colors.onAccentSoft,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 7),
-                Text(
-                  title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: text.titleMedium,
-                ),
-                if (educator.isNotEmpty) ...[
-                  const SizedBox(height: 4),
-                  Text(
-                    educator,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: text.bodySmall?.copyWith(color: colors.ink),
-                  ),
-                ],
-                if ((data['description'] ?? '').toString().isNotEmpty) ...[
-                  const SizedBox(height: 6),
-                  Text(
-                    data['description'].toString(),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    style: text.bodySmall?.copyWith(color: colors.muted),
-                  ),
-                ],
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Icon(Icons.place_outlined, size: 16, color: colors.muted),
-                    const SizedBox(width: 4),
-                    Expanded(
-                      child: Text(
-                        format == 'online'
-                            ? 'Online'
-                            : [
-                                (data['area'] ?? '').toString(),
-                                (data['city'] ?? 'Nearby').toString(),
-                              ].where((value) => value.isNotEmpty).join(', '),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: text.bodySmall?.copyWith(color: colors.muted),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        (data['start_date'] ?? 'Dates to be announced')
-                            .toString(),
-                        style: text.bodySmall?.copyWith(color: colors.muted),
-                      ),
-                    ),
-                    FilledButton.icon(
-                      onPressed: () async {
-                        if (await openClass(context, data)) onDeleted();
-                      },
-                      icon: const Icon(Icons.arrow_forward, size: 16),
-                      label: const Text('Details'),
-                    ),
-                  ],
                 ),
               ],
             ),
