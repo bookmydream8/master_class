@@ -25,15 +25,26 @@ String upiLink({
 }
 
 class UpiIdCard extends StatelessWidget {
-  const UpiIdCard({super.key, required this.upiId, required this.name});
+  const UpiIdCard({
+    super.key,
+    required this.upiId,
+    required this.name,
+    this.heading = 'YOUR UPI',
+  });
 
   final String upiId;
   final String name;
+  final String heading;
 
   @override
   Widget build(BuildContext context) {
     if (upiId.trim().isEmpty) return const SizedBox.shrink();
-    final link = upiLink(upiId: upiId.trim(), name: name, amount: 0, note: 'Master Class');
+    final link = upiLink(
+      upiId: upiId.trim(),
+      name: name,
+      amount: 0,
+      note: 'Master Class',
+    );
     final colors = AppPalette.of(context);
     return Container(
       width: double.infinity,
@@ -43,7 +54,11 @@ class UpiIdCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('YOUR UPI', style: Theme.of(context).textTheme.labelSmall?.copyWith(color: colors.muted, letterSpacing: 1)),
+          Text(
+            heading,
+            style: Theme.of(context).textTheme.labelSmall
+                ?.copyWith(color: colors.muted, letterSpacing: 1),
+          ),
           const SizedBox(height: 8),
           Text(upiId, style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 8),
@@ -54,10 +69,23 @@ class UpiIdCard extends StatelessWidget {
               backgroundColor: Colors.white,
             ),
           ),
-          TextButton.icon(
-            onPressed: () => Clipboard.setData(ClipboardData(text: upiId)),
-            icon: const Icon(Icons.copy),
-            label: const Text('Copy UPI ID'),
+          Wrap(
+            spacing: 4,
+            children: [
+              TextButton.icon(
+                onPressed: () => Clipboard.setData(ClipboardData(text: upiId)),
+                icon: const Icon(Icons.copy),
+                label: const Text('Copy UPI ID'),
+              ),
+              TextButton.icon(
+                onPressed: () => launchUrl(
+                  Uri.parse(link),
+                  mode: LaunchMode.externalApplication,
+                ),
+                icon: const Icon(Icons.payments_outlined),
+                label: const Text('Open UPI app'),
+              ),
+            ],
           ),
         ],
       ),
@@ -81,6 +109,17 @@ class UpiPayPanel extends StatelessWidget {
 
   Future<String> _masterUpi() async {
     if (upiId.isNotEmpty) return upiId;
+    final listingId = (listing['id'] ?? '').toString();
+    if (listingId.isNotEmpty && !listingId.startsWith('demo_')) {
+      try {
+        final contact = await firestore
+            .collection('listings_contact')
+            .doc(listingId)
+            .get();
+        final fromContact = (contact.data()?['upiId'] ?? '').toString();
+        if (fromContact.isNotEmpty) return fromContact;
+      } catch (_) {}
+    }
     final masterId = (listing['creatorId'] ?? '').toString();
     if (masterId.isEmpty || masterId.startsWith('demo_')) return '';
     final profile = await firestore.collection('profiles').doc(masterId).get();
@@ -92,7 +131,9 @@ class UpiPayPanel extends StatelessWidget {
     if (!context.mounted) return;
     if (id.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('This master has not added a UPI ID yet.')),
+        const SnackBar(
+          content: Text('This master has not added a UPI ID yet.'),
+        ),
       );
       return;
     }
@@ -106,13 +147,18 @@ class UpiPayPanel extends StatelessWidget {
           keyboardType: TextInputType.number,
           decoration: InputDecoration(
             labelText: 'Amount',
-            helperText: 'Pending ₹${fee.pending}. A smaller amount is a partial payment.',
+            helperText:
+                'Pending ₹${fee.pending}. A smaller amount is a partial payment.',
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
           FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, int.tryParse(amount.text.trim())),
+            onPressed: () =>
+                Navigator.pop(dialogContext, int.tryParse(amount.text.trim())),
             child: const Text('Open UPI'),
           ),
         ],
@@ -127,11 +173,16 @@ class UpiPayPanel extends StatelessWidget {
       amount: chosen,
       note: note,
     );
-    final opened = await launchUrl(Uri.parse(link), mode: LaunchMode.externalApplication);
+    final opened = await launchUrl(
+      Uri.parse(link),
+      mode: LaunchMode.externalApplication,
+    );
     if (!context.mounted) return;
     if (!opened) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('No UPI app opened. Pay $id and then share the UTR.')),
+        SnackBar(
+          content: Text('No UPI app opened. Pay $id and then share the UTR.'),
+        ),
       );
     }
     final utr = TextEditingController();
@@ -143,11 +194,15 @@ class UpiPayPanel extends StatelessWidget {
           controller: utr,
           decoration: const InputDecoration(
             labelText: 'UTR or transaction reference',
-            helperText: 'The master confirms this before the fee is marked paid.',
+            helperText:
+                'The master confirms this before the fee is marked paid.',
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Later')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Later'),
+          ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, utr.text.trim()),
             child: const Text('Submit'),
@@ -174,7 +229,9 @@ class UpiPayPanel extends StatelessWidget {
       child: TextButton.icon(
         onPressed: () => _pay(context),
         icon: const Icon(Icons.account_balance_wallet_outlined),
-        label: Text(fee.utrStatus == 'submitted' ? 'UTR sent · pay again' : 'Pay via UPI'),
+        label: Text(
+          fee.utrStatus == 'submitted' ? 'UTR sent · pay again' : 'Pay via UPI',
+        ),
       ),
     );
   }
@@ -183,6 +240,7 @@ class UpiPayPanel extends StatelessWidget {
 Future<String> loadOwnUpiId() async {
   final user = FirebaseAuth.instance.currentUser;
   if (user == null) return '';
-  final data = (await firestore.collection('profiles').doc(user.uid).get()).data();
+  final data = (await firestore.collection('profiles').doc(user.uid).get())
+      .data();
   return (data?['upiId'] ?? '').toString();
 }

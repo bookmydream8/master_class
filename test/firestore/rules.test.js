@@ -234,6 +234,51 @@ test('batches and announcements are written only by the master', async () => {
   await assertSucceeds(getDoc(doc(db(null), 'listings/class1/announcements/a1')));
 });
 
+test('a learner records only their own interest and the master can read it', async () => {
+  await seed(async (adminDb) => {
+    await setDoc(doc(adminDb, 'listings/class1'), { creatorId: 'master', title: 'Tabla' });
+    await setDoc(doc(adminDb, 'profiles/learner'), { mcId: 'MC100245' });
+    await setDoc(doc(adminDb, 'listings_contact/class1'), {
+      creatorId: 'master',
+      contactNumber: '9845000000',
+      masterName: 'Meera',
+      masterEmail: 'meera@example.com',
+      masterPhone: '9845000000',
+      upiId: 'meera@oksbi',
+    });
+  });
+  const interest = {
+    userId: 'learner',
+    listingId: 'class1',
+    status: 'interested',
+    listingTitle: 'Tabla',
+    userName: 'Anita',
+    userEmail: 'anita@example.com',
+    mcId: 'MC100245',
+    contactNumber: '9845011122',
+    createdAt: '2026-11-15T03:30:00.000Z',
+  };
+  await assertFails(getDoc(doc(db(null), 'listings_contact/class1')));
+  await assertFails(getDoc(doc(db('learner'), 'listings_contact/class1')));
+  await assertFails(getDoc(doc(db('stranger'), 'listings/class1/interests/learner')));
+  await assertFails(setDoc(doc(db('learner'), 'listings/class1/interests/stranger'), {
+    ...interest,
+    userId: 'stranger',
+  }));
+  await assertFails(setDoc(doc(db('learner'), 'listings/class1/interests/learner'), {
+    ...interest,
+    mcId: 'not-an-id',
+  }));
+  await assertSucceeds(setDoc(doc(db('learner'), 'listings/class1/interests/learner'), interest));
+  await assertSucceeds(getDoc(doc(db('learner'), 'listings/class1/interests/learner')));
+  await assertSucceeds(getDoc(doc(db('master'), 'listings/class1/interests/learner')));
+  await assertSucceeds(getDocs(collection(db('master'), 'listings/class1/interests')));
+  await assertFails(getDocs(collection(db('stranger'), 'listings/class1/interests')));
+  await assertSucceeds(getDoc(doc(db('learner'), 'listings_contact/class1')));
+  await assertFails(getDoc(doc(db('stranger'), 'listings_contact/class1')));
+  await assertSucceeds(getDoc(doc(db('master'), 'listings_contact/class1')));
+});
+
 test('inbox and saved classes belong to the profile owner', async () => {
   const note = {
     title: 'Class reminder',

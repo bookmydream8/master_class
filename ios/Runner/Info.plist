@@ -68,6 +68,12 @@
 	</array>
   <key>NSLocationWhenInUseUsageDescription</key>
   <string>Master Class uses your location to add a class venue and to show how far a physical class is.</string>
+  <key>NSCameraUsageDescription</key>
+  <string>Master Class uses the camera so you can take a profile photo or a class photo.</string>
+  <key>NSPhotoLibraryUsageDescription</key>
+  <string>Master Class uses your photo library so you can choose a profile photo or a class photo.</string>
+  <key>NSPhotoLibraryAddUsageDescription</key>
+  <string>Master Class saves a cropped photo when you update your profile or a class.</string>
   <key>UIBackgroundModes</key>
   <array>
     <string>remote-notification</string>

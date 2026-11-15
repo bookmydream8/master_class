@@ -15,6 +15,7 @@ import 'package:image_cropper/image_cropper.dart';
 
 import 'app_theme.dart';
 import 'madhura_board.dart' as board;
+import 'profile_photo.dart';
 
 const spokenLanguageOptions = <String>[
   'English',
@@ -186,17 +187,19 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
       error = null;
     });
     try {
+      final source = await askImageSource(context);
+      if (source == null || !mounted) return;
       final photo = await ImagePicker().pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 1200,
-        imageQuality: 75,
+        source: source,
+        maxWidth: 1600,
+        imageQuality: 85,
       );
       if (photo == null) return;
       final cropped = await ImageCropper().cropImage(
         sourcePath: photo.path,
         compressFormat: ImageCompressFormat.jpg,
         compressQuality: 55,
-        maxWidth: 800,
+        maxWidth: 1200,
         maxHeight: 800,
         uiSettings: [
           AndroidUiSettings(
@@ -205,6 +208,20 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
             toolbarWidgetColor: Colors.white,
             initAspectRatio: CropAspectRatioPreset.ratio16x9,
             lockAspectRatio: false,
+            aspectRatioPresets: const [
+              CropAspectRatioPreset.ratio16x9,
+              CropAspectRatioPreset.original,
+            ],
+          ),
+          IOSUiSettings(
+            title: 'Crop class photo',
+            aspectRatioLockEnabled: false,
+            resetAspectRatioEnabled: true,
+            aspectRatioPickerButtonHidden: false,
+            aspectRatioPresets: const [
+              CropAspectRatioPreset.ratio16x9,
+              CropAspectRatioPreset.original,
+            ],
           ),
         ],
       );
@@ -496,16 +513,29 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
             if (format == 'online') 'topic': focus ?? category,
             'creatorId': user.uid,
             'creatorName': user.displayName ?? 'Class master',
-            'creatorEmail': user.email ?? '',
             'createdAt': now.toIso8601String(),
             'updatedAt': now.toIso8601String(),
           })
           .timeout(const Duration(seconds: 20));
       if (contact.isNotEmpty) {
+        var upiId = '';
+        var masterName = user.displayName ?? 'Class master';
+        try {
+          final profile =
+              (await firestore.collection('profiles').doc(user.uid).get())
+                  .data();
+          upiId = (profile?['upiId'] ?? '').toString().trim();
+          final storedName = (profile?['name'] ?? '').toString().trim();
+          if (storedName.isNotEmpty) masterName = storedName;
+        } catch (_) {}
         await firestore.collection('listings_contact').doc(ref.id).set({
           'id': ref.id,
           'creatorId': user.uid,
           'contactNumber': contact,
+          'masterName': masterName,
+          'masterEmail': user.email ?? '',
+          'masterPhone': contact,
+          if (upiId.isNotEmpty) 'upiId': upiId,
           if (session.isNotEmpty) 'sessionLink': session,
           'updatedAt': now.toIso8601String(),
         }, SetOptions(merge: true));
@@ -532,7 +562,7 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
     final colors = AppPalette.of(context);
     final text = Theme.of(context).textTheme;
     return SafeArea(
-    child: ListView(
+      child: ListView(
         padding: EdgeInsets.fromLTRB(
           16,
           12,
@@ -625,7 +655,10 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                   const SizedBox(height: 10),
                   TextField(
                     controller: customSubcategory,
-                    decoration: _decoration(context, 'Custom sub-category · optional'),
+                    decoration: _decoration(
+                      context,
+                      'Custom sub-category · optional',
+                    ),
                   ),
                 ] else ...[
                   const SizedBox(height: 10),
@@ -735,7 +768,8 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
               children: [
                 TextField(
                   controller: title,
-                  decoration: _decoration(context, 
+                  decoration: _decoration(
+                    context,
                     'Class name — e.g. Tabla foundations',
                   ),
                 ),
@@ -744,7 +778,8 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                   controller: description,
                   minLines: 3,
                   maxLines: 5,
-                  decoration: _decoration(context, 
+                  decoration: _decoration(
+                    context,
                     'What learners cover, weekly schedule, level…',
                   ),
                 ),
@@ -753,7 +788,10 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                   controller: aboutMaster,
                   minLines: 2,
                   maxLines: 4,
-                  decoration: _decoration(context, 'About the master / teacher'),
+                  decoration: _decoration(
+                    context,
+                    'About the master / teacher',
+                  ),
                 ),
               ],
             ),
@@ -806,7 +844,10 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
               controller: previousLinks,
               keyboardType: TextInputType.url,
               maxLines: 3,
-              decoration: _decoration(context, 'YouTube or website links, one per line'),
+              decoration: _decoration(
+                context,
+                'YouTube or website links, one per line',
+              ),
             ),
           ),
           _FormCard(
@@ -816,7 +857,10 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                 TextField(
                   controller: contactNumber,
                   keyboardType: TextInputType.phone,
-                  decoration: _decoration(context, 'Contact / WhatsApp number *'),
+                  decoration: _decoration(
+                    context,
+                    'Contact / WhatsApp number *',
+                  ),
                 ),
                 if (profilePhone.isNotEmpty)
                   Align(
@@ -833,7 +877,10 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                 TextField(
                   controller: sessionLink,
                   keyboardType: TextInputType.url,
-                  decoration: _decoration(context, 'Session link (Zoom, Meet, etc.)'),
+                  decoration: _decoration(
+                    context,
+                    'Session link (Zoom, Meet, etc.)',
+                  ),
                 ),
                 const SizedBox(height: 7),
                 Text(
@@ -892,12 +939,14 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                         ChoiceChip(
                           label: const Text('Per month'),
                           selected: feePeriod == 'month',
-                          onSelected: (_) => setState(() => feePeriod = 'month'),
+                          onSelected: (_) =>
+                              setState(() => feePeriod = 'month'),
                         ),
                         ChoiceChip(
                           label: const Text('One-time course fee'),
                           selected: feePeriod == 'course',
-                          onSelected: (_) => setState(() => feePeriod = 'course'),
+                          onSelected: (_) =>
+                              setState(() => feePeriod = 'course'),
                         ),
                       ],
                     ),
@@ -946,7 +995,10 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                 TextField(
                   controller: durationDays,
                   keyboardType: TextInputType.number,
-                  decoration: _decoration(context, 'Duration in number of days'),
+                  decoration: _decoration(
+                    context,
+                    'Duration in number of days',
+                  ),
                 ),
               ],
             ),
@@ -962,7 +1014,8 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                     isExpanded: true,
                     key: ValueKey(city),
                     initialValue: city.isEmpty ? null : city,
-                    decoration: _decoration(context, 
+                    decoration: _decoration(
+                      context,
                       format == 'physical' || format == 'competition'
                           ? 'City *'
                           : 'City (optional)',
@@ -994,7 +1047,8 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                       controller: area,
                       textCapitalization: TextCapitalization.words,
                       maxLength: 100,
-                      decoration: _decoration(context, 
+                      decoration: _decoration(
+                        context,
                         'Area / locality * — e.g. Indiranagar',
                       ),
                     ),
@@ -1019,7 +1073,10 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                   TextField(
                     controller: mapLink,
                     keyboardType: TextInputType.url,
-                    decoration: _decoration(context, 'Google Maps link to the venue'),
+                    decoration: _decoration(
+                      context,
+                      'Google Maps link to the venue',
+                    ),
                   ),
                 ],
               ),
@@ -1028,9 +1085,9 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
             Padding(
               padding: const EdgeInsets.only(bottom: 10),
               child: Text(
-              error!,
-              style: TextStyle(color: Theme.of(context).colorScheme.error),
-            ),
+                error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
             ),
           FilledButton(
             onPressed: saving ? null : publish,
@@ -1066,10 +1123,8 @@ class _FormCard extends StatelessWidget {
           children: [
             Text(
               title,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                letterSpacing: 1.1,
-                color: colors.muted,
-              ),
+              style: Theme.of(context).textTheme.labelSmall
+                  ?.copyWith(letterSpacing: 1.1, color: colors.muted),
             ),
             const SizedBox(height: 12),
             child,

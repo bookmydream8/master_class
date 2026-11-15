@@ -4,3 +4,5 @@ Future<void> initClassReminders() async {}
 Future<void> scheduleClassReminders(Map<String, dynamic> listing) async {}
 
 Future<void> cancelClassReminders(String listingId) async {}
+
+Future<void> syncCityTopics({String? city, String? eventCity}) async {}
