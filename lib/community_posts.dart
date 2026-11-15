@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'auth_profile.dart' show requireLogin;
 import 'admin_moderation.dart';
 import 'firestore_database.dart';
+import 'app_theme.dart';
 import 'madhura_board.dart' as board;
 
 Future<void> openCommunityPost(
@@ -213,18 +214,16 @@ class _CommunityPostFormState extends State<CommunityPostForm> {
       children: [
         Text(
           isPoll ? 'Demo class vote' : 'Request a class',
-          style: const TextStyle(
-            fontFamily: 'serif',
-            fontSize: 27,
-            color: board.ink,
-          ),
+          style: Theme.of(context).textTheme.headlineSmall,
         ),
         const SizedBox(height: 8),
         Text(
           isPoll
               ? 'Propose a demo class and ask learners to vote. Each person can change their vote.'
               : 'Tell masters what you want to learn. Other learners can show interest.',
-          style: const TextStyle(color: board.muted),
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: AppPalette.of(context).muted,
+          ),
         ),
         const SizedBox(height: 18),
         TextField(
@@ -280,7 +279,10 @@ class _CommunityPostFormState extends State<CommunityPostForm> {
         if (error != null)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),
-            child: Text(error!, style: const TextStyle(color: board.clay)),
+            child: Text(
+              error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
           ),
         const SizedBox(height: 12),
         FilledButton(
@@ -407,10 +409,11 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
             .where('status', isEqualTo: 'master_ready')
             .get();
         if (accepted.docs.length >= 2) {
-          if (mounted)
+          if (mounted) {
             setState(
               () => error = 'This request already has two accepted masters.',
             );
+          }
           return;
         }
       }
@@ -489,8 +492,9 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
   @override
   Widget build(BuildContext context) {
     final owner = user?.uid == widget.data['creatorId'];
+    final colors = AppPalette.of(context);
+    final text = Theme.of(context).textTheme;
     return Scaffold(
-      backgroundColor: Colors.white,
       appBar: AppBar(
         title: Text(isPoll ? 'Demo class vote' : 'Class request'),
         actions: [
@@ -505,24 +509,19 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
         children: [
           Text(
             (widget.data['title'] ?? '').toString(),
-            style: const TextStyle(
-              fontFamily: 'serif',
-              fontSize: 26,
-              color: board.ink,
-            ),
+            style: text.headlineSmall,
           ),
           const SizedBox(height: 8),
           if (!isPoll)
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: board.cream,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: board.border),
+                color: colors.accentSoft,
+                borderRadius: BorderRadius.circular(14),
               ),
               child: Row(
                 children: [
-                  const Icon(Icons.person_outline, color: board.clay),
+                  Icon(Icons.person_outline, color: colors.onAccentSoft),
                   const SizedBox(width: 8),
                   Expanded(
                     child: Text(
@@ -637,7 +636,10 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
           if (error != null)
             Padding(
               padding: const EdgeInsets.only(top: 12),
-              child: Text(error!, style: const TextStyle(color: board.clay)),
+              child: Text(
+              error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
             ),
         ],
       ),
@@ -695,28 +697,32 @@ class CommunityActivity extends StatelessWidget {
             !viewer.isAnonymous &&
             (viewer.uid == creatorId ||
                 responses.any((doc) => doc.id == viewer.uid));
+        final colors = AppPalette.of(context);
         return Container(
           margin: const EdgeInsets.only(top: 10),
           decoration: BoxDecoration(
-            color: const Color(0xFFF0FAFE),
-            border: Border.all(color: const Color(0xFFB7DFEE)),
-            borderRadius: BorderRadius.circular(12),
+            color: colors.accentSoft,
+            border: Border.all(color: colors.line),
+            borderRadius: BorderRadius.circular(14),
           ),
           child: ExpansionTile(
             key: PageStorageKey('community_activity_$listingId'),
-            dense: true,
-            tilePadding: const EdgeInsets.symmetric(horizontal: 12),
+            tilePadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
             childrenPadding: const EdgeInsets.fromLTRB(14, 0, 14, 12),
+            iconColor: colors.onAccentSoft,
+            collapsedIconColor: colors.onAccentSoft,
             leading: Icon(
               isPoll ? Icons.how_to_vote_outlined : Icons.people_outline,
-              color: const Color(0xFF008ECC),
-              size: 20,
+              color: colors.onAccentSoft,
+              size: 22,
             ),
             title: Text(
               isPoll
                   ? '${people.length} vote${people.length == 1 ? '' : 's'}'
                   : '${people.length} interested learner${people.length == 1 ? '' : 's'}',
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                color: colors.onAccentSoft,
+              ),
             ),
             subtitle: isPoll
                 ? null

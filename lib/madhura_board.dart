@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -7,9 +8,10 @@ import 'firestore_database.dart';
 
 import 'package:flutter/material.dart';
 
+import 'app_theme.dart';
 import 'master_class_app.dart' show showPostSheet;
 import 'madhura_detail.dart' show MasterClassDetailPage, showMasterClassDetails;
-import 'auth_profile.dart' show requireLogin, openProfile;
+import 'auth_profile.dart' show ProfilePage, requireLogin;
 import 'community_posts.dart'
     show CommunityActivity, CommunityDetailPage, openCommunityPost;
 
@@ -213,7 +215,11 @@ bool isActiveCommunityListing(Map<String, dynamic> data) {
 }
 
 class MasterClassBoard extends StatefulWidget {
-  const MasterClassBoard({super.key});
+  const MasterClassBoard({super.key, this.initialTab = 0});
+
+  /// Opens Home, Classes, Community, or Profile. Defaults to Home.
+  final int initialTab;
+
   @override
   State<MasterClassBoard> createState() => _MasterClassBoardState();
 }
@@ -238,10 +244,24 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
   bool _pendingListingReset = false;
   bool _hasMoreListings = true;
   String? _listingError;
+  late int _tab;
+  late final StreamSubscription<User?> _authSub;
+
   @override
   void initState() {
     super.initState();
+    final requestedTab = widget.initialTab;
+    _tab = requestedTab < 0 ? 0 : (requestedTab > 3 ? 3 : requestedTab);
+    if (_tab == 1) {
+      _browseFormat = 'online';
+      _loadListings(reset: true);
+    }
     _loadPreferredCity();
+    _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
+      if (!mounted) return;
+      if (user != null && !user.isAnonymous) _loadPreferredCity();
+      setState(() {});
+    }, onError: (_) {});
   }
 
   Future<void> _loadPreferredCity() async {
@@ -411,14 +431,16 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
 
   @override
   void dispose() {
+    _authSub.cancel();
     search.dispose();
     super.dispose();
   }
 
   bool isExpired(Map<String, dynamic> data) {
     final expiresAt = data['expires_at'];
-    if (expiresAt is Timestamp)
+    if (expiresAt is Timestamp) {
       return !expiresAt.toDate().isAfter(DateTime.now());
+    }
     final dateText = (data['expiry_date'] ?? data['start_date'] ?? '')
         .toString();
     final date = DateTime.tryParse(dateText);
@@ -456,8 +478,9 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
     }
     if (focus != null &&
         listedFocus.toLowerCase() != focus!.toLowerCase() &&
-        !words.contains(focus!.toLowerCase()))
+        !words.contains(focus!.toLowerCase())) {
       return false;
+    }
     final format = listingFormat(d);
     if (format == 'class_request') return false;
     if (!selectedFormats.contains(format)) return false;
@@ -473,8 +496,9 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
     if (city.isNotEmpty &&
         format != 'online' &&
         place.isNotEmpty &&
-        place.toLowerCase() != city.toLowerCase())
+        place.toLowerCase() != city.toLowerCase()) {
       return false;
+    }
     if (area.isNotEmpty &&
         (format == 'physical' || format == 'competition') &&
         listingArea.toLowerCase() != area.toLowerCase()) {
@@ -488,42 +512,42 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
     final listings = _listingDocs
         .where((doc) => !isExpired(doc.data()) && matches(doc.data()))
         .toList();
+    final colors = AppPalette.of(context);
+    final text = Theme.of(context).textTheme;
+    final heading = category == null
+        ? selectedFormats.contains('competition')
+              ? 'Competitions'
+              : selectedFormats.contains('event')
+              ? 'Events'
+              : selectedFormats.contains('physical')
+              ? 'Physical classes'
+              : 'Online classes'
+        : category!;
     return RefreshIndicator(
       onRefresh: () => _loadListings(reset: true),
       child: ListView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 18, 16, 25),
+        physics: AlwaysScrollableScrollPhysics(
+          parent: ScrollConfiguration.of(context).getScrollPhysics(context),
+        ),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
         children: [
           Text(
-            category == null
-                ? selectedFormats.contains('competition')
-                      ? 'Competitions'
-                      : selectedFormats.contains('event')
-                      ? 'Events'
-                      : selectedFormats.contains('physical')
-                      ? 'Physical classes'
-                      : 'Online classes'
-                : category!,
-            style: const TextStyle(
-              fontSize: 20,
-              height: 1.08,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF1A1A1A),
-            ),
+            heading,
+            style: text.titleLarge?.copyWith(color: colors.ink),
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 4),
           Text(
             _loadingListings
-                ? 'Loading the board…'
-                : '${listings.length} results loaded',
-            style: const TextStyle(fontSize: 12, color: muted),
+                ? 'Loading classes…'
+                : '${listings.length} ${listings.length == 1 ? 'class' : 'classes'}',
+            style: text.bodySmall?.copyWith(color: colors.muted),
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           Wrap(
-            spacing: 10,
-            runSpacing: 4,
+            spacing: 8,
+            runSpacing: 8,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               OutlinedButton.icon(
@@ -532,63 +556,47 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
                         selectedFormats.contains('online')
                     ? null
                     : openCityPicker,
-                icon: const Icon(Icons.location_on_outlined, size: 16),
+                icon: const Icon(Icons.location_on_outlined, size: 18),
                 label: Text(city.isEmpty ? 'All cities' : city),
-                style: _filterStyle,
+                style: _filterStyle(context),
               ),
               if (selectedFormats.contains('physical') ||
                   selectedFormats.contains('competition'))
                 OutlinedButton.icon(
                   onPressed: openAreaPicker,
-                  icon: const Icon(Icons.place_outlined, size: 16),
+                  icon: const Icon(Icons.place_outlined, size: 18),
                   label: Text(area.isEmpty ? 'All areas' : area),
-                  style: _filterStyle,
+                  style: _filterStyle(context),
                 ),
               FilterChip(
                 label: const Text('Free only'),
                 selected: freeOnly,
-                selectedColor: const Color(0xFFFFE2C1),
-                checkmarkColor: const Color(0xFF9C3F00),
                 onSelected: (value) => setState(() => freeOnly = value),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           if (_listingError != null)
             _Notice(
               'Could not load classes',
               _listingError!,
+              actionLabel: 'Try again',
               onPost: () => _loadListings(reset: true),
             )
           else if (_loadingListings)
-            const Center(
-              child: Padding(
-                padding: EdgeInsets.all(48),
-                child: CircularProgressIndicator(),
-              ),
-            )
+            const AppLoading(message: 'Loading classes')
           else if (listings.isEmpty)
             _Notice(
               'Nothing here yet',
-              'Try a different filter, refresh the board, or be the first to post for this focus.',
+              'Try another filter, or be the first to post a class for this focus.',
               onPost: () => openPost(context),
             )
           else
-            for (var index = 0; index < listings.length; index++) ...[
+            for (final doc in listings)
               _CompactClassCard({
-                ...listings[index].data(),
-                'id': listings[index].id,
+                ...doc.data(),
+                'id': doc.id,
               }, onDeleted: () => _loadListings(reset: true)),
-              if (index < listings.length - 1)
-                const Padding(
-                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-                  child: Divider(
-                    height: 12,
-                    thickness: 1.5,
-                    color: Color(0xFFD7DDD7),
-                  ),
-                ),
-            ],
           if (!_loadingListings && _hasMoreListings) ...[
             const SizedBox(height: 4),
             OutlinedButton(
@@ -632,7 +640,7 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
 
   void openCityPicker() => showModalBottomSheet(
     context: context,
-    backgroundColor: Colors.white,
+    showDragHandle: true,
     builder: (sheetContext) => SafeArea(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -678,7 +686,7 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
     final availableAreas = _availableAreas();
     final selected = await showModalBottomSheet<String>(
       context: context,
-      backgroundColor: Colors.white,
+      showDragHandle: true,
       builder: (sheetContext) => SafeArea(
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -761,379 +769,310 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
   }
 
   @override
-  Widget build(BuildContext context) =>
-      _browseFormat == null ? _buildHome(context) : _buildBrowse(context);
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: switch (_tab) {
+        0 => SafeArea(bottom: false, child: _buildHome(context)),
+        1 => SafeArea(bottom: false, child: _buildBrowse(context)),
+        2 => SafeArea(bottom: false, child: _buildCommunity(context)),
+        _ => _buildProfileTab(context),
+      },
+      floatingActionButton: _tab == 3
+          ? null
+          : FloatingActionButton(
+              onPressed: () => openPost(context),
+              tooltip: 'Create a post',
+              child: const Icon(Icons.add),
+            ),
+      bottomNavigationBar: _homeFooter(context),
+    );
+  }
 
   Widget _buildHome(BuildContext context) {
     final name = FirebaseAuth.instance.currentUser?.displayName
         ?.split(' ')
         .first;
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 22),
+    final colors = AppPalette.of(context);
+    final text = Theme.of(context).textTheme;
+    final initial = (name ?? 'M').characters.first.toUpperCase();
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(20, 12, 20, 96),
+      children: [
+        Row(
           children: [
-            Row(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.asset(
-                    'logo.png',
-                    width: 42,
-                    height: 42,
-                    fit: BoxFit.cover,
+            ClipRRect(
+              borderRadius: BorderRadius.circular(14),
+              child: Image.asset(
+                'logo.png',
+                width: 44,
+                height: 44,
+                fit: BoxFit.cover,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'MASTER CLASS',
+                    style: text.labelSmall?.copyWith(
+                      color: colors.muted,
+                      letterSpacing: 1.1,
+                    ),
                   ),
-                ),
-                const SizedBox(width: 11),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                  const SizedBox(height: 2),
+                  Row(
                     children: [
-                      const Text(
-                        'LEARNING NEAR',
-                        style: TextStyle(
-                          fontSize: 10,
-                          letterSpacing: 1.1,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF8B8B8B),
+                      Icon(Icons.location_on, size: 18, color: colors.accent),
+                      const SizedBox(width: 2),
+                      Flexible(
+                        child: Text(
+                          savedPhysicalCity,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: text.titleLarge?.copyWith(color: colors.ink),
                         ),
                       ),
-                      Row(
-                        children: [
-                          const Icon(
-                            Icons.location_on,
-                            size: 16,
-                            color: Color(0xFFED792B),
-                          ),
-                          const SizedBox(width: 3),
-                          Flexible(
-                            child: Text(
-                              savedPhysicalCity,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.w800,
-                                color: Color(0xFF1A1A1A),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
                     ],
                   ),
-                ),
-                InkWell(
-                  onTap: () => openProfile(context),
-                  borderRadius: BorderRadius.circular(22),
-                  child: CircleAvatar(
-                    radius: 21,
-                    backgroundColor: const Color(0xFFFFE7D3),
-                    child: Text(
-                      (name ?? 'M').characters.first.toUpperCase(),
-                      style: const TextStyle(
-                        color: Color(0xFFBC591D),
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            TextField(
-              readOnly: true,
-              onTap: () => _openBrowse('online'),
-              decoration: InputDecoration(
-                hintText: 'Search music, yoga, languages…',
-                prefixIcon: const Icon(Icons.search, color: Color(0xFF897362)),
-                suffixIcon: const Icon(
-                  Icons.arrow_forward_ios,
-                  size: 15,
-                  color: Color(0xFF897362),
-                ),
-                filled: true,
-                fillColor: Colors.white,
-                contentPadding: const EdgeInsets.symmetric(vertical: 16),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(color: Color(0xFFE9DED1)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: const BorderSide(color: Color(0xFFE9DED1)),
-                ),
+                ],
               ),
             ),
-            const SizedBox(height: 18),
-            InkWell(
-              onTap: () => _openBrowse('online'),
-              borderRadius: BorderRadius.circular(24),
-              child: Container(
-                height: 172,
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  gradient: const LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Color(0xFFFFA648),
-                      Color(0xFFFF772F),
-                      Color(0xFFD85818),
-                    ],
-                  ),
-                  borderRadius: BorderRadius.circular(24),
-                ),
-                child: Row(
-                  children: [
-                    const Expanded(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'DISCOVER SOMETHING NEW',
-                            style: TextStyle(
-                              fontSize: 10,
-                              letterSpacing: 1,
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                          SizedBox(height: 9),
-                          Text(
-                            'Find your next\nmaster class',
-                            style: TextStyle(
-                              fontSize: 23,
-                              height: 1.05,
-                              color: Colors.white,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          SizedBox(height: 14),
-                          Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                'Explore classes',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              SizedBox(width: 7),
-                              Icon(
-                                Icons.arrow_forward,
-                                size: 16,
-                                color: Colors.white,
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    Container(
-                      width: 76,
-                      height: 76,
-                      decoration: const BoxDecoration(
-                        color: Color(0x33FFFFFF),
-                        shape: BoxShape.circle,
-                      ),
-                      child: const Icon(
-                        Icons.auto_stories_outlined,
-                        size: 40,
-                        color: Colors.white,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 22),
-            _HomeFeaturedClasses(onExplore: () => _openBrowse('online')),
-            const SizedBox(height: 24),
-            Row(
-              children: [
-                const Expanded(
+            Semantics(
+              button: true,
+              label: 'Open profile',
+              child: InkWell(
+                onTap: () => _selectTab(3),
+                customBorder: const CircleBorder(),
+                child: CircleAvatar(
+                  radius: 22,
+                  backgroundColor: colors.accentSoft,
                   child: Text(
-                    'What do you want to learn?',
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF194B42),
+                    initial,
+                    style: text.titleMedium?.copyWith(
+                      color: colors.onAccentSoft,
                     ),
-                  ),
-                ),
-                TextButton(
-                  onPressed: () => _openBrowse('online'),
-                  child: const Text('Explore'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            LayoutBuilder(
-              builder: (context, constraints) {
-                final tileWidth = (constraints.maxWidth - 10) / 2;
-                return Column(
-                  children: [
-                    Row(
-                      children: [
-                        SizedBox(
-                          width: tileWidth,
-                          child: _HomeTypeTile(
-                            icon: Icons.laptop_mac_outlined,
-                            title: 'Online',
-                            subtitle: 'Learn anywhere',
-                            color: const Color(0xFFE2F3DE),
-                            onTap: () => _openBrowse('online'),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        SizedBox(
-                          width: tileWidth,
-                          child: _HomeTypeTile(
-                            icon: Icons.location_on_outlined,
-                            title: 'Physical',
-                            subtitle: 'Meet nearby',
-                            color: const Color(0xFFFFE8DF),
-                            onTap: () => _openBrowse('physical'),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        SizedBox(
-                          width: tileWidth,
-                          child: _HomeTypeTile(
-                            icon: Icons.emoji_events_outlined,
-                            title: 'Competition',
-                            subtitle: 'Show your skills',
-                            color: const Color(0xFFFFF2C8),
-                            onTap: () => _openBrowse('competition'),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        SizedBox(
-                          width: tileWidth,
-                          child: _HomeTypeTile(
-                            icon: Icons.event_outlined,
-                            title: 'Events',
-                            subtitle: 'Explore events',
-                            color: const Color(0xFFE9E5FF),
-                            onTap: () => _openBrowse('event'),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                );
-              },
-            ),
-            const SizedBox(height: 12),
-            _ActiveListingCount(
-              kind: 'demo_poll',
-              builder: (activeCount) => InkWell(
-                onTap: () => openDemoClasses(context),
-                borderRadius: BorderRadius.circular(18),
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFD9EEF3),
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.how_to_vote_outlined,
-                        color: Color(0xFF245866),
-                      ),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Demo Class',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w800,
-                                color: Color(0xFF245866),
-                              ),
-                            ),
-                            Text(
-                              'Vote for the next class to try.',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Color(0xFF46727B),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      _CountBadge(count: activeCount),
-                      const SizedBox(width: 8),
-                      const Icon(Icons.arrow_outward, color: Color(0xFF245866)),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-            _ActiveListingCount(
-              kind: 'class_request',
-              builder: (activeCount) => InkWell(
-                onTap: () => openRequests(context),
-                borderRadius: BorderRadius.circular(18),
-                child: Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFECA58E),
-                    borderRadius: BorderRadius.circular(18),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.forum_outlined,
-                        color: Color(0xFF42352B),
-                      ),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Request a Class',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w800,
-                                color: Color(0xFF42352B),
-                              ),
-                            ),
-                            Text(
-                              'Can’t find it? Ask the community.',
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: Color(0xFF684D43),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      _CountBadge(count: activeCount),
-                      const SizedBox(width: 8),
-                      const Icon(Icons.arrow_outward, color: Color(0xFF42352B)),
-                    ],
                   ),
                 ),
               ),
             ),
           ],
         ),
-      ),
-      bottomNavigationBar: _homeFooter(context),
+        const SizedBox(height: 18),
+        Semantics(
+          button: true,
+          label: 'Search classes',
+          child: TextField(
+            readOnly: true,
+            onTap: () => _openBrowse('online'),
+            decoration: InputDecoration(
+              hintText: 'Search music, yoga, languages…',
+              prefixIcon: Icon(Icons.search, color: colors.muted),
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        Material(
+          color: colors.accentSoft,
+          borderRadius: BorderRadius.circular(24),
+          child: InkWell(
+            onTap: () => _openBrowse('online'),
+            borderRadius: BorderRadius.circular(24),
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'DISCOVER',
+                    style: text.labelSmall?.copyWith(
+                      color: colors.onAccentSoft,
+                      letterSpacing: 1.1,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Find your next master class',
+                    style: text.headlineSmall?.copyWith(color: colors.ink),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Online lessons, nearby classes, competitions, and events.',
+                    style: text.bodyMedium?.copyWith(color: colors.muted),
+                  ),
+                  const SizedBox(height: 14),
+                  FilledButton.tonalIcon(
+                    onPressed: () => _openBrowse('online'),
+                    icon: const Icon(Icons.arrow_forward, size: 18),
+                    label: const Text('Explore classes'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 22),
+        Text('Learn your way', style: text.titleLarge),
+        const SizedBox(height: 4),
+        Text(
+          'Pick a format to browse',
+          style: text.bodySmall?.copyWith(color: colors.muted),
+        ),
+        const SizedBox(height: 12),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final tileWidth = (constraints.maxWidth - 12) / 2;
+            Widget tile({
+              required IconData icon,
+              required String title,
+              required String subtitle,
+              required Color color,
+              required String format,
+            }) => SizedBox(
+              width: tileWidth,
+              child: _HomeTypeTile(
+                icon: icon,
+                title: title,
+                subtitle: subtitle,
+                color: color,
+                onTap: () => _openBrowse(format),
+              ),
+            );
+            return Column(
+              children: [
+                Row(
+                  children: [
+                    tile(
+                      icon: Icons.laptop_mac_outlined,
+                      title: 'Online',
+                      subtitle: 'Learn anywhere',
+                      color: colors.onlineWell,
+                      format: 'online',
+                    ),
+                    const SizedBox(width: 12),
+                    tile(
+                      icon: Icons.location_on_outlined,
+                      title: 'Physical',
+                      subtitle: 'Meet nearby',
+                      color: colors.physicalWell,
+                      format: 'physical',
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    tile(
+                      icon: Icons.emoji_events_outlined,
+                      title: 'Competition',
+                      subtitle: 'Show your skills',
+                      color: colors.competitionWell,
+                      format: 'competition',
+                    ),
+                    const SizedBox(width: 12),
+                    tile(
+                      icon: Icons.event_outlined,
+                      title: 'Events',
+                      subtitle: 'What\'s on',
+                      color: colors.eventWell,
+                      format: 'event',
+                    ),
+                  ],
+                ),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: 22),
+        _communityEntry(
+          context,
+          icon: Icons.how_to_vote_outlined,
+          title: 'Demo class votes',
+          subtitle: 'Help choose the next class to try.',
+          kind: 'demo_poll',
+          onTap: () => openDemoClasses(context),
+        ),
+        const SizedBox(height: 12),
+        _communityEntry(
+          context,
+          icon: Icons.forum_outlined,
+          title: 'Request a class',
+          subtitle: 'Ask the community for a class you want.',
+          kind: 'class_request',
+          onTap: () => openRequests(context),
+        ),
+        const SizedBox(height: 22),
+        _HomeFeaturedClasses(onExplore: () => _openBrowse('online')),
+      ],
     );
+  }
+
+  Widget _communityEntry(
+    BuildContext context, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required String kind,
+    required VoidCallback onTap,
+  }) {
+    final colors = AppPalette.of(context);
+    final text = Theme.of(context).textTheme;
+    return _ActiveListingCount(
+      kind: kind,
+      builder: (activeCount) => Material(
+        color: colors.card,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: colors.line),
+        ),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: colors.accentSoft,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: Icon(icon, color: colors.onAccentSoft),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: text.titleSmall),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: text.bodySmall?.copyWith(color: colors.muted),
+                      ),
+                    ],
+                  ),
+                ),
+                _CountBadge(count: activeCount),
+                Icon(Icons.chevron_right, color: colors.muted),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _selectTab(int index) {
+    if (index == 1 && _browseFormat == null) {
+      _openBrowse('online');
+      return;
+    }
+    setState(() => _tab = index);
   }
 
   void _openBrowse(String format) {
@@ -1141,6 +1080,7 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
     _selectFormats({format});
     setState(() {
       _browseFormat = format;
+      _tab = 1;
       if (changingFormat) {
         category = null;
         focus = null;
@@ -1152,211 +1092,218 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
   }
 
   Widget _buildBrowse(BuildContext context) {
-    final format = _browseFormat!;
-    final title = format == 'online'
-        ? 'Learn from anywhere.'
-        : format == 'physical'
-        ? 'Learn near you.'
-        : format == 'event'
-        ? 'Explore events near you.'
-        : 'Compete and grow.';
-    return Scaffold(
-      backgroundColor: Colors.white,
-      body: SafeArea(
-        child: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 14),
-              decoration: const BoxDecoration(
-                color: Colors.white,
-                border: Border(bottom: BorderSide(color: Color(0xFFECECEC))),
+    final colors = AppPalette.of(context);
+    final text = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Classes', style: text.headlineSmall),
+              const SizedBox(height: 4),
+              Text(
+                'Browse lessons, nearby sessions, competitions, and events.',
+                style: text.bodySmall?.copyWith(color: colors.muted),
               ),
-              child: Row(
-                children: [
-                  IconButton.filledTonal(
-                    onPressed: () => setState(() => _browseFormat = null),
-                    style: IconButton.styleFrom(
-                      backgroundColor: const Color(0xFFF5F5F5),
-                      foregroundColor: const Color(0xFF1A1A1A),
-                    ),
-                    icon: const Icon(Icons.arrow_back),
-                  ),
-                  const SizedBox(width: 8),
-                  Icon(
-                    format == 'physical'
-                        ? Icons.location_on_outlined
-                        : format == 'competition'
-                        ? Icons.emoji_events_outlined
-                        : format == 'event'
-                        ? Icons.event_outlined
-                        : Icons.laptop_mac_outlined,
-                    color: const Color(0xFFFF8C00),
-                    size: 22,
-                  ),
-                  const SizedBox(width: 9),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'EXPLORE',
-                          style: TextStyle(
-                            fontSize: 10,
-                            letterSpacing: 0.8,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF8B8B8B),
-                          ),
-                        ),
-                        Text(
-                          formats[format] ?? 'Classes',
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF1A1A1A),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  _RoundIcon(
-                    icon: Icons.person_outline,
-                    onTap: () => openProfile(context),
-                  ),
-                ],
-              ),
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 23,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF1A1A1A),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: search,
-                    onChanged: (_) => setState(() {}),
-                    decoration: InputDecoration(
-                      hintText: 'Search piano, French, yoga...',
-                      prefixIcon: const Icon(
-                        Icons.search,
-                        color: Color(0xFF8B8B8B),
-                      ),
-                      suffixIcon: search.text.isEmpty
-                          ? null
-                          : IconButton(
-                              onPressed: () => setState(search.clear),
-                              icon: const Icon(Icons.close, size: 18),
-                            ),
-                      filled: true,
-                      fillColor: const Color(0xFFF5F5F5),
-                      contentPadding: const EdgeInsets.symmetric(vertical: 13),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(28),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            SizedBox(
-              height: 44,
-              child: ListView(
+              const SizedBox(height: 14),
+              SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 5,
-                ),
-                children: [
-                  _Chip(
-                    'All',
-                    category == null,
-                    () => setState(() {
-                      category = null;
-                      focus = null;
-                    }),
-                  ),
-                  ...categories.keys.map(
-                    (name) => _Chip(
-                      name,
-                      category == name,
-                      () => setState(() {
-                        category = name;
-                        focus = null;
-                      }),
+                child: Row(
+                  children: [
+                    _Chip(
+                      'Online',
+                      _browseFormat == 'online',
+                      () => _openBrowse('online'),
                     ),
-                  ),
-                ],
-              ),
-            ),
-            if (category != null && categories[category] != null)
-              SizedBox(
-                height: 38,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  children: categories[category]!
-                      .map(
-                        (value) => _Chip(
-                          value,
-                          focus == value,
-                          () => setState(
-                            () => focus = focus == value ? null : value,
-                          ),
-                        ),
-                      )
-                      .toList(),
+                    _Chip(
+                      'Physical',
+                      _browseFormat == 'physical',
+                      () => _openBrowse('physical'),
+                    ),
+                    _Chip(
+                      'Competitions',
+                      _browseFormat == 'competition',
+                      () => _openBrowse('competition'),
+                    ),
+                    _Chip(
+                      'Events',
+                      _browseFormat == 'event',
+                      () => _openBrowse('event'),
+                    ),
+                  ],
                 ),
               ),
-            Expanded(child: _buildListingFeed()),
-          ],
+              const SizedBox(height: 12),
+              Semantics(
+                label: 'Search classes',
+                child: TextField(
+                  controller: search,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    hintText: 'Search piano, French, yoga…',
+                    prefixIcon: Icon(Icons.search, color: colors.muted),
+                    suffixIcon: search.text.isEmpty
+                        ? null
+                        : IconButton(
+                            tooltip: 'Clear search',
+                            onPressed: () => setState(search.clear),
+                            icon: const Icon(Icons.close, size: 18),
+                          ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
-      bottomNavigationBar: _homeFooter(context),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 48,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            children: [
+              _Chip(
+                'All',
+                category == null,
+                () => setState(() {
+                  category = null;
+                  focus = null;
+                }),
+              ),
+              ...categories.keys.map(
+                (name) => _Chip(
+                  name,
+                  category == name,
+                  () => setState(() {
+                    category = name;
+                    focus = null;
+                  }),
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (category != null && categories[category] != null)
+          SizedBox(
+            height: 44,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              children: categories[category]!
+                  .map(
+                    (value) => _Chip(
+                      value,
+                      focus == value,
+                      () => setState(
+                        () => focus = focus == value ? null : value,
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+          ),
+        Expanded(child: _buildListingFeed()),
+      ],
     );
   }
 
-  Widget _homeFooter(BuildContext context) => SafeArea(
-    top: false,
-    child: Container(
-      height: 64,
-      color: Colors.white,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
+  Widget _buildCommunity(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final colors = AppPalette.of(context);
+    return DefaultTabController(
+      length: 3,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _Tab(
-            Icons.home_outlined,
-            'Home',
-            _browseFormat == null,
-            () => setState(() => _browseFormat = null),
-          ),
-          IconButton.filled(
-            onPressed: () => openPost(context),
-            icon: const Icon(Icons.add),
-            style: IconButton.styleFrom(
-              backgroundColor: const Color(0xFFFF8C00),
-              foregroundColor: Colors.white,
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Community', style: text.headlineSmall),
+                const SizedBox(height: 4),
+                Text(
+                  'Ask for a class, or vote on the next demo.',
+                  style: text.bodySmall?.copyWith(color: colors.muted),
+                ),
+              ],
             ),
           ),
-          _Tab(
-            Icons.person_outline,
-            'Profile',
-            false,
-            () => openProfile(context),
+          const TabBar(
+            isScrollable: true,
+            tabAlignment: TabAlignment.start,
+            tabs: [
+              Tab(text: 'Online requests'),
+              Tab(text: 'Nearby requests'),
+              Tab(text: 'Demo votes'),
+            ],
+          ),
+          const Expanded(
+            child: TabBarView(
+              children: [
+                _RequestFeed(mode: 'online'),
+                _RequestFeed(mode: 'physical'),
+                _DemoFeed(),
+              ],
+            ),
           ),
         ],
       ),
-    ),
-  );
+    );
+  }
+
+  Widget _buildProfileTab(BuildContext context) {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null || user.isAnonymous) {
+      return SafeArea(
+        child: AppEmpty(
+          icon: Icons.person_outline,
+          title: 'Your profile',
+          message:
+              'Sign in to publish classes, save your city, and see learners who are interested.',
+          actionLabel: 'Sign in',
+          onAction: () async {
+            final ok = await requireLogin(context);
+            if (ok && mounted) setState(() => _tab = 3);
+          },
+        ),
+      );
+    }
+    return const ProfilePage();
+  }
+
+  Widget _homeFooter(BuildContext context) {
+    return NavigationBar(
+      selectedIndex: _tab,
+      onDestinationSelected: _selectTab,
+      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+      destinations: const [
+        NavigationDestination(
+          icon: Icon(Icons.home_outlined),
+          selectedIcon: Icon(Icons.home),
+          label: 'Home',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.school_outlined),
+          selectedIcon: Icon(Icons.school),
+          label: 'Classes',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.groups_outlined),
+          selectedIcon: Icon(Icons.groups),
+          label: 'Community',
+        ),
+        NavigationDestination(
+          icon: Icon(Icons.person_outline),
+          selectedIcon: Icon(Icons.person),
+          label: 'Profile',
+        ),
+      ],
+    );
+  }
 }
 
 Future<void> openRequests(BuildContext context) async {
@@ -1370,14 +1317,8 @@ class _RequestsPage extends StatelessWidget {
   Widget build(BuildContext context) => DefaultTabController(
     length: 2,
     child: Scaffold(
-      backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: ink,
-        title: const Text(
-          'Class requests',
-          style: TextStyle(fontWeight: FontWeight.w800),
-        ),
+        title: const Text('Class requests'),
         bottom: const TabBar(
           tabs: [
             Tab(text: 'Online'),
@@ -1406,10 +1347,16 @@ class _RequestFeed extends StatelessWidget {
             .where('listing_kind', isEqualTo: 'class_request')
             .snapshots(),
         builder: (context, snapshot) {
-          if (snapshot.hasError)
-            return const Center(child: Text('Could not load requests.'));
-          if (!snapshot.hasData)
-            return const Center(child: CircularProgressIndicator());
+          if (snapshot.hasError) {
+            return const AppEmpty(
+              icon: Icons.cloud_off_outlined,
+              title: 'Could not load requests',
+              message: 'Check your connection and try again in a moment.',
+            );
+          }
+          if (!snapshot.hasData) {
+            return const AppLoading(message: 'Loading requests');
+          }
           final requests = snapshot.data!.docs
               .where(
                 (doc) =>
@@ -1417,15 +1364,17 @@ class _RequestFeed extends StatelessWidget {
                     isActiveCommunityListing(doc.data()),
               )
               .toList();
-          if (requests.isEmpty)
-            return Center(
-              child: Text(
-                'No $mode class requests yet.',
-                style: const TextStyle(color: muted),
-              ),
+          if (requests.isEmpty) {
+            return AppEmpty(
+              icon: Icons.forum_outlined,
+              title: 'No requests yet',
+              message: mode == 'physical'
+                  ? 'No nearby class requests yet. Ask for one the community can teach in person.'
+                  : 'No online class requests yet. Tell masters what you want to learn.',
             );
+          }
           return ListView.builder(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
             itemCount: requests.length,
             itemBuilder: (context, index) {
               final doc = requests[index];
@@ -1446,96 +1395,122 @@ class _DemoClassesPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: Colors.white,
     appBar: AppBar(
-      backgroundColor: Colors.white,
-      foregroundColor: ink,
-      title: const Text(
-        'Demo classes',
-        style: TextStyle(fontWeight: FontWeight.w800),
-      ),
+      title: const Text('Demo classes'),
       actions: [
         TextButton.icon(
           onPressed: () => openCommunityPost(context, 'demo_poll'),
           icon: const Icon(Icons.add, size: 18),
           label: const Text('Post'),
-          style: TextButton.styleFrom(foregroundColor: clay),
         ),
       ],
     ),
-    body: StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: firestore
-          .collection('listings')
-          .where('listing_kind', isEqualTo: 'demo_poll')
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return const Center(child: Text('Could not load demo classes.'));
-        }
-        if (!snapshot.hasData) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        final demos = snapshot.data!.docs
-            .where((doc) => isActiveCommunityListing(doc.data()))
-            .toList();
-        if (demos.isEmpty) {
-          return const Center(
-            child: Text('No demo classes yet.', style: TextStyle(color: muted)),
-          );
-        }
-        return ListView.builder(
-          padding: const EdgeInsets.all(16),
-          itemCount: demos.length,
-          itemBuilder: (context, index) {
-            final doc = demos[index];
-            return _Card({...doc.data(), 'id': doc.id});
-          },
-        );
-      },
-    ),
+    body: const _DemoFeed(),
   );
+}
+
+class _DemoFeed extends StatelessWidget {
+  const _DemoFeed();
+
+  @override
+  Widget build(BuildContext context) =>
+      StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+        stream: firestore
+            .collection('listings')
+            .where('listing_kind', isEqualTo: 'demo_poll')
+            .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return const AppEmpty(
+              icon: Icons.cloud_off_outlined,
+              title: 'Could not load demo classes',
+              message: 'Check your connection and try again in a moment.',
+            );
+          }
+          if (!snapshot.hasData) {
+            return const AppLoading(message: 'Loading demo votes');
+          }
+          final demos = snapshot.data!.docs
+              .where((doc) => isActiveCommunityListing(doc.data()))
+              .toList();
+          if (demos.isEmpty) {
+            return AppEmpty(
+              icon: Icons.how_to_vote_outlined,
+              title: 'No demo votes yet',
+              message: 'Propose a demo class and let learners choose what to try.',
+              actionLabel: 'Post a demo',
+              onAction: () => openCommunityPost(context, 'demo_poll'),
+            );
+          }
+          return ListView.builder(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+            itemCount: demos.length,
+            itemBuilder: (context, index) {
+              final doc = demos[index];
+              return _Card({...doc.data(), 'id': doc.id});
+            },
+          );
+        },
+      );
 }
 
 Future<void> openPost(BuildContext context) async {
   if (!await requireLogin(context) || !context.mounted) return;
   await showModalBottomSheet<void>(
     context: context,
-    builder: (sheetContext) => SafeArea(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.school_outlined),
-              title: const Text('Post a class or event'),
-              onTap: () {
-                Navigator.pop(sheetContext);
-                showPostSheet(context);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.volunteer_activism_outlined),
-              title: const Text('Request a class'),
-              subtitle: const Text('Other learners can show interest'),
-              onTap: () {
-                Navigator.pop(sheetContext);
-                openCommunityPost(context, 'class_request');
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.how_to_vote_outlined),
-              title: const Text('Demo class vote'),
-              subtitle: const Text('Let learners choose a demo'),
-              onTap: () {
-                Navigator.pop(sheetContext);
-                openCommunityPost(context, 'demo_poll');
-              },
-            ),
-          ],
+    showDragHandle: true,
+    builder: (sheetContext) {
+      final colors = AppPalette.of(sheetContext);
+      Widget leading(IconData icon) => CircleAvatar(
+        backgroundColor: colors.accentSoft,
+        child: Icon(icon, color: colors.onAccentSoft),
+      );
+      return SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                child: Text(
+                  'Create',
+                  style: Theme.of(sheetContext).textTheme.titleLarge,
+                ),
+              ),
+              ListTile(
+                leading: leading(Icons.school_outlined),
+                title: const Text('Post a class or event'),
+                subtitle: const Text('Share a lesson, competition, or event'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  showPostSheet(context);
+                },
+              ),
+              ListTile(
+                leading: leading(Icons.volunteer_activism_outlined),
+                title: const Text('Request a class'),
+                subtitle: const Text('Other learners can show interest'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  openCommunityPost(context, 'class_request');
+                },
+              ),
+              ListTile(
+                leading: leading(Icons.how_to_vote_outlined),
+                title: const Text('Demo class vote'),
+                subtitle: const Text('Let learners choose a demo'),
+                onTap: () {
+                  Navigator.pop(sheetContext);
+                  openCommunityPost(context, 'demo_poll');
+                },
+              ),
+            ],
+          ),
         ),
-      ),
-    ),
+      );
+    },
   );
 }
 
@@ -1559,13 +1534,17 @@ Future<bool> openClass(BuildContext context, Map<String, dynamic> data) async {
       false;
 }
 
-final _filterStyle = OutlinedButton.styleFrom(
-  backgroundColor: const Color(0xFFFFF4E6),
-  foregroundColor: const Color(0xFF9C3F00),
-  side: const BorderSide(color: Color(0xFFFFD6AE)),
-  shape: const StadiumBorder(),
-  textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-);
+ButtonStyle _filterStyle(BuildContext context) {
+  final colors = AppPalette.of(context);
+  return OutlinedButton.styleFrom(
+    backgroundColor: colors.accentSoft,
+    foregroundColor: colors.onAccentSoft,
+    side: BorderSide(color: colors.line),
+    shape: const StadiumBorder(),
+    minimumSize: const Size(0, 40),
+    textStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+  );
+}
 
 class _Label extends StatelessWidget {
   const _Label(this.text);
@@ -1573,11 +1552,10 @@ class _Label extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Text(
     text,
-    style: const TextStyle(
-      fontSize: 10,
-      color: muted,
-      fontWeight: FontWeight.w800,
-      letterSpacing: 1.2,
+    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+      color: AppPalette.of(context).muted,
+      fontWeight: FontWeight.w700,
+      letterSpacing: 1.1,
     ),
   );
 }
@@ -1588,52 +1566,41 @@ class _Chip extends StatelessWidget {
   final bool active;
   final VoidCallback onTap;
   @override
-  Widget build(BuildContext context) => Padding(
-    padding: const EdgeInsets.only(right: 7),
-    child: InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
-      child: Container(
-        alignment: Alignment.center,
-        padding: const EdgeInsets.symmetric(horizontal: 13),
-        decoration: BoxDecoration(
-          color: active ? const Color(0xFFFF8C00) : const Color(0xFFF5F5F5),
-          border: Border.all(
-            color: active ? const Color(0xFFFF8C00) : const Color(0xFFECECEC),
-          ),
+  Widget build(BuildContext context) {
+    final colors = AppPalette.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(right: 8),
+      child: Semantics(
+        button: true,
+        selected: active,
+        label: text,
+        child: InkWell(
+          onTap: onTap,
           borderRadius: BorderRadius.circular(20),
-        ),
-        child: Text(
-          text,
-          style: TextStyle(
-            fontSize: 12,
-            color: active ? Colors.white : const Color(0xFF1A1A1A),
-            fontWeight: FontWeight.w600,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOut,
+            alignment: Alignment.center,
+            constraints: const BoxConstraints(minHeight: 40),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+            decoration: BoxDecoration(
+              color: active ? colors.accent : colors.card,
+              border: Border.all(color: active ? colors.accent : colors.line),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              text,
+              style: TextStyle(
+                fontSize: 13,
+                color: active ? colors.onAccent : colors.ink,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ),
       ),
-    ),
-  );
-}
-
-class _RoundIcon extends StatelessWidget {
-  const _RoundIcon({required this.icon, required this.onTap});
-  final IconData icon;
-  final VoidCallback onTap;
-  @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: onTap,
-    borderRadius: BorderRadius.circular(18),
-    child: Container(
-      width: 42,
-      height: 42,
-      decoration: const BoxDecoration(
-        color: Colors.white,
-        shape: BoxShape.circle,
-      ),
-      child: Icon(icon, color: const Color(0xFF194B42)),
-    ),
-  );
+    );
+  }
 }
 
 class _HomeFeaturedClasses extends StatelessWidget {
@@ -1641,7 +1608,7 @@ class _HomeFeaturedClasses extends StatelessWidget {
 
   final VoidCallback onExplore;
 
-  Widget _cover(Map<String, dynamic> data) {
+  Widget _cover(BuildContext context, Map<String, dynamic> data) {
     final encoded = (data['image_base64'] ?? '').toString();
     if (encoded.isNotEmpty) {
       try {
@@ -1649,10 +1616,10 @@ class _HomeFeaturedClasses extends StatelessWidget {
           base64Decode(encoded),
           fit: BoxFit.cover,
           width: double.infinity,
-          errorBuilder: (_, _, _) => _fallbackCover(),
+          errorBuilder: (_, _, _) => _fallbackCover(context),
         );
       } catch (_) {
-        return _fallbackCover();
+        return _fallbackCover(context);
       }
     }
     final url = (data['image_url'] ?? '').toString();
@@ -1661,152 +1628,240 @@ class _HomeFeaturedClasses extends StatelessWidget {
         url,
         fit: BoxFit.cover,
         width: double.infinity,
-        errorBuilder: (_, _, _) => _fallbackCover(),
+        errorBuilder: (_, _, _) => _fallbackCover(context),
       );
     }
-    return _fallbackCover();
+    return _fallbackCover(context);
   }
 
-  Widget _fallbackCover() => const ColoredBox(
-    color: Color(0xFFFFE8D6),
+  Widget _fallbackCover(BuildContext context) => ColoredBox(
+    color: AppPalette.of(context).imageFallback,
     child: Center(
       child: Icon(
         Icons.auto_stories_outlined,
         size: 36,
-        color: Color(0xFFD66D27),
+        color: AppPalette.of(context).accent,
       ),
     ),
   );
 
   @override
-  Widget build(
-    BuildContext context,
-  ) => StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-    stream: firestore
-        .collection('listings')
-        .orderBy('updatedAt', descending: true)
-        .limit(30)
-        .snapshots(),
-    builder: (context, snapshot) {
-      final listings =
-          snapshot.data?.docs
-              .where((doc) {
-                final data = doc.data();
-                final format = listingFormat(data);
-                if (!const {
-                  'online',
-                  'physical',
-                  'competition',
-                  'event',
-                }.contains(format))
-                  return false;
-                final expires = data['expires_at'];
-                return expires is! Timestamp ||
-                    expires.toDate().isAfter(DateTime.now());
-              })
-              .take(6)
-              .toList() ??
-          [];
-      if (listings.isEmpty) return const SizedBox.shrink();
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+  Widget build(BuildContext context) {
+    final colors = AppPalette.of(context);
+    final text = Theme.of(context).textTheme;
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: firestore
+          .collection('listings')
+          .orderBy('updatedAt', descending: true)
+          .limit(30)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const AppLoading(message: 'Loading classes');
+          }
+          return const SizedBox.shrink();
+        }
+        bool current(Map<String, dynamic> data) {
+          final format = listingFormat(data);
+          if (!const {
+            'online',
+            'physical',
+            'competition',
+            'event',
+          }.contains(format)) {
+            return false;
+          }
+          final expires = data['expires_at'];
+          return expires is! Timestamp || expires.toDate().isAfter(DateTime.now());
+        }
+
+        final docs = snapshot.data!.docs.where((doc) => current(doc.data())).toList();
+        final today = DateTime.now();
+        final startOfToday = DateTime(today.year, today.month, today.day);
+        bool upcoming(QueryDocumentSnapshot<Map<String, dynamic>> doc) {
+          final data = doc.data();
+          if (listingFormat(data) == 'event') return true;
+          final date = DateTime.tryParse((data['start_date'] ?? '').toString());
+          if (date == null) return false;
+          final day = DateTime(date.year, date.month, date.day);
+          return !day.isBefore(startOfToday);
+        }
+
+        final upcomingDocs = docs.where(upcoming).toList()
+          ..sort((a, b) {
+            final ad = DateTime.tryParse((a.data()['start_date'] ?? '').toString());
+            final bd = DateTime.tryParse((b.data()['start_date'] ?? '').toString());
+            if (ad == null && bd == null) return 0;
+            if (ad == null) return 1;
+            if (bd == null) return -1;
+            return ad.compareTo(bd);
+          });
+        final featured = docs.take(6).toList();
+
+        String educator(Map<String, dynamic> data) {
+          final name = (data['creatorName'] ?? '').toString().trim();
+          if (name.isNotEmpty) return name;
+          final about = (data['about_master'] ?? '').toString().trim();
+          if (about.isEmpty) return '';
+          return about.split('\n').first;
+        }
+
+        String whenLabel(Map<String, dynamic> data) {
+          final date = DateTime.tryParse((data['start_date'] ?? '').toString());
+          if (date == null) {
+            return listingFormat(data) == 'event' ? 'Event' : '';
+          }
+          const months = [
+            'Jan',
+            'Feb',
+            'Mar',
+            'Apr',
+            'May',
+            'Jun',
+            'Jul',
+            'Aug',
+            'Sep',
+            'Oct',
+            'Nov',
+            'Dec',
+          ];
+          final day = DateTime(date.year, date.month, date.day);
+          if (day == startOfToday) return 'Today';
+          if (day == startOfToday.add(const Duration(days: 1))) return 'Tomorrow';
+          return '${date.day} ${months[date.month - 1]}';
+        }
+
+        Widget rail(
+          String title,
+          List<QueryDocumentSnapshot<Map<String, dynamic>>> items, {
+          required bool showDate,
+        }) {
+          if (items.isEmpty) return const SizedBox.shrink();
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Expanded(
-                child: Text(
-                  'Featured classes',
-                  style: TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF1A1A1A),
-                  ),
-                ),
+              AppSectionHeader(
+                title: title,
+                action: 'See all',
+                onAction: onExplore,
               ),
-              TextButton(onPressed: onExplore, child: const Text('Explore')),
-            ],
-          ),
-          const SizedBox(height: 8),
-          SizedBox(
-            height: 194,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: listings.length,
-              separatorBuilder: (_, _) => const SizedBox(width: 12),
-              itemBuilder: (context, index) {
-                final doc = listings[index];
-                final data = doc.data();
-                final format = listingFormat(data);
-                return SizedBox(
-                  width: 208,
-                  child: Material(
-                    color: Colors.white,
-                    borderRadius: BorderRadius.circular(18),
-                    child: InkWell(
-                      onTap: () => showMasterClassDetails(context, {
-                        ...data,
-                        'id': doc.id,
-                      }),
-                      borderRadius: BorderRadius.circular(18),
-                      child: Container(
-                        decoration: BoxDecoration(
+              const SizedBox(height: 10),
+              SizedBox(
+                height: showDate ? 228 : 210,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  itemCount: items.length,
+                  separatorBuilder: (_, _) => const SizedBox(width: 12),
+                  itemBuilder: (context, index) {
+                    final doc = items[index];
+                    final data = doc.data();
+                    final format = listingFormat(data);
+                    final teacher = educator(data);
+                    final when = whenLabel(data);
+                    return SizedBox(
+                      width: 210,
+                      child: Material(
+                        color: colors.card,
+                        shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(18),
-                          border: Border.all(color: const Color(0xFFE9DED1)),
+                          side: BorderSide(color: colors.line),
                         ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            ClipRRect(
-                              borderRadius: const BorderRadius.vertical(
-                                top: Radius.circular(17),
+                        child: InkWell(
+                          onTap: () => showMasterClassDetails(context, {
+                            ...data,
+                            'id': doc.id,
+                          }),
+                          borderRadius: BorderRadius.circular(18),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              ClipRRect(
+                                borderRadius: const BorderRadius.vertical(
+                                  top: Radius.circular(17),
+                                ),
+                                child: SizedBox(
+                                  height: 108,
+                                  width: double.infinity,
+                                  child: _cover(context, data),
+                                ),
                               ),
-                              child: SizedBox(
-                                height: 104,
-                                width: double.infinity,
-                                child: _cover(data),
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(11, 9, 11, 10),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    (data['title'] ?? 'Class').toString(),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w800,
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    if (showDate && when.isNotEmpty)
+                                      Container(
+                                        margin: const EdgeInsets.only(bottom: 6),
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 8,
+                                          vertical: 3,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: colors.accentSoft,
+                                          borderRadius: BorderRadius.circular(20),
+                                        ),
+                                        child: Text(
+                                          when,
+                                          style: text.labelSmall?.copyWith(
+                                            color: colors.onAccentSoft,
+                                          ),
+                                        ),
+                                      ),
+                                    Text(
+                                      (data['title'] ?? 'Class').toString(),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: text.titleSmall,
                                     ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    '${formats[format] ?? 'Class'} · ${data['city'] ?? 'Anywhere'}',
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: Color(0xFF897362),
+                                    if (teacher.isNotEmpty) ...[
+                                      const SizedBox(height: 3),
+                                      Text(
+                                        teacher,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: text.bodySmall?.copyWith(
+                                          color: colors.ink,
+                                        ),
+                                      ),
+                                    ],
+                                    const SizedBox(height: 3),
+                                    Text(
+                                      '${formats[format] ?? 'Class'} · ${data['city'] ?? 'Anywhere'}',
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: text.bodySmall?.copyWith(
+                                        color: colors.muted,
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-          const SizedBox(height: 18),
-        ],
-      );
-    },
-  );
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 20),
+            ],
+          );
+        }
+
+        if (docs.isEmpty) return const SizedBox.shrink();
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            rail('Upcoming sessions', upcomingDocs.take(8).toList(), showDate: true),
+            rail('Featured classes', featured, showDate: false),
+          ],
+        );
+      },
+    );
+  }
 }
 
 class _HomeTypeTile extends StatelessWidget {
@@ -1824,67 +1879,64 @@ class _HomeTypeTile extends StatelessWidget {
   final VoidCallback onTap;
 
   @override
-  Widget build(BuildContext context) => Material(
-    color: Colors.white,
-    elevation: 2,
-    shadowColor: const Color(0x1A5A3320),
-    shape: RoundedRectangleBorder(
-      borderRadius: BorderRadius.circular(17),
-      side: const BorderSide(color: Color(0xFFE9DED1)),
-    ),
-    child: InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(17),
-      child: Padding(
-        padding: const EdgeInsets.all(11),
-        child: Row(
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: color,
-                borderRadius: BorderRadius.circular(11),
-              ),
-              child: Icon(icon, size: 20, color: const Color(0xFF276559)),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF194B42),
-                    ),
+  Widget build(BuildContext context) {
+    final colors = AppPalette.of(context);
+    final text = Theme.of(context).textTheme;
+    return Material(
+      color: colors.card,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: colors.line),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 84),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+            child: Row(
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: color,
+                    borderRadius: BorderRadius.circular(14),
                   ),
-                  if (subtitle.isNotEmpty) ...[
-                    const SizedBox(height: 3),
-                    Text(
-                      subtitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 9,
-                        color: Color(0xFF829184),
+                  child: Icon(icon, size: 22, color: colors.wellInk),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: text.titleSmall?.copyWith(color: colors.ink),
                       ),
-                    ),
-                  ],
-                ],
-              ),
+                      if (subtitle.isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: text.bodySmall?.copyWith(color: colors.muted),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
             ),
-            const Icon(Icons.chevron_right, size: 18, color: Color(0xFF829184)),
-          ],
+          ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _CompactClassCard extends StatelessWidget {
@@ -1906,43 +1958,44 @@ class _CompactClassCard extends StatelessWidget {
         (data['image_url'] ?? data['imageUrl'] ?? data['photoUrl'] ?? '')
             .toString();
     final imageBase64 = (data['image_base64'] ?? '').toString();
+    final colors = AppPalette.of(context);
+    final text = Theme.of(context).textTheme;
+    final educatorName = (data['creatorName'] ?? '').toString().trim();
+    final about = (data['about_master'] ?? '').toString().trim();
+    final educator = educatorName.isNotEmpty
+        ? educatorName
+        : (about.isEmpty ? '' : about.split('\n').first);
+
+    Widget placeholder() => ColoredBox(
+      color: colors.imageFallback,
+      child: Icon(Icons.auto_stories_outlined, color: colors.accent),
+    );
 
     Widget imageHeader() {
       if (imageBase64.isNotEmpty) {
         return Image.memory(
           base64Decode(imageBase64),
           fit: BoxFit.cover,
-          errorBuilder: (context, error, stack) => const ColoredBox(
-            color: Color(0xFFEEDFCB),
-            child: Icon(Icons.broken_image_outlined, color: clay),
-          ),
+          errorBuilder: (context, error, stack) => placeholder(),
         );
       }
       if (imageUrl.isNotEmpty) {
         return Image.network(
           imageUrl,
           fit: BoxFit.cover,
-          errorBuilder: (context, error, stack) => const ColoredBox(
-            color: Color(0xFFEEDFCB),
-            child: Icon(Icons.broken_image_outlined, color: clay),
-          ),
+          errorBuilder: (context, error, stack) => placeholder(),
         );
       }
-      return const ColoredBox(
-        color: Color(0xFFEEDFCB),
-        child: Icon(Icons.auto_awesome, color: clay),
-      );
+      return placeholder();
     }
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(0, 4, 0, 18),
+      padding: const EdgeInsets.only(bottom: 14),
       child: Material(
-        color: Colors.white,
-        elevation: 2,
-        shadowColor: const Color(0x1A241912),
+        color: colors.card,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: const BorderSide(color: Color(0x66000000), width: 1),
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: colors.line),
         ),
         child: InkWell(
           onTap: () async {
@@ -1974,34 +2027,30 @@ class _CompactClassCard extends StatelessWidget {
                           ? Icons.location_on_outlined
                           : Icons.laptop_mac_outlined,
                       size: 16,
-                      color: const Color(0xFF1A1A1A),
+                      color: colors.accent,
                     ),
                     const SizedBox(width: 5),
                     Expanded(
                       child: Text(
                         '$categoryName · ${data['subcategory'] ?? ''}'
                             .replaceAll(RegExp(r' · $'), ''),
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Color(0xFF1A1A1A),
-                        ),
+                        style: text.bodySmall?.copyWith(color: colors.muted),
                       ),
                     ),
                     Container(
                       padding: const EdgeInsets.symmetric(
-                        horizontal: 9,
+                        horizontal: 10,
                         vertical: 5,
                       ),
                       decoration: BoxDecoration(
-                        color: const Color(0xFFFFF4E6),
-                        borderRadius: BorderRadius.circular(10),
+                        color: colors.accentSoft,
+                        borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
                         price,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF1A1A1A),
+                        style: text.labelSmall?.copyWith(
+                          color: colors.onAccentSoft,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
                     ),
@@ -2012,33 +2061,30 @@ class _CompactClassCard extends StatelessWidget {
                   title,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 17,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF1A1A1A),
-                  ),
+                  style: text.titleMedium,
                 ),
+                if (educator.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    educator,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: text.bodySmall?.copyWith(color: colors.ink),
+                  ),
+                ],
                 if ((data['description'] ?? '').toString().isNotEmpty) ...[
-                  const SizedBox(height: 5),
+                  const SizedBox(height: 6),
                   Text(
                     data['description'].toString(),
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      height: 1.35,
-                      color: Color(0xFF1A1A1A),
-                    ),
+                    style: text.bodySmall?.copyWith(color: colors.muted),
                   ),
                 ],
-                const SizedBox(height: 11),
+                const SizedBox(height: 12),
                 Row(
                   children: [
-                    const Icon(
-                      Icons.place_outlined,
-                      size: 14,
-                      color: Color(0xFF1A1A1A),
-                    ),
+                    Icon(Icons.place_outlined, size: 16, color: colors.muted),
                     const SizedBox(width: 4),
                     Expanded(
                       child: Text(
@@ -2050,36 +2096,26 @@ class _CompactClassCard extends StatelessWidget {
                               ].where((value) => value.isNotEmpty).join(', '),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 10,
-                          color: Color(0xFF1A1A1A),
-                        ),
+                        style: text.bodySmall?.copyWith(color: colors.muted),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 11),
+                const SizedBox(height: 8),
                 Row(
                   children: [
                     Expanded(
                       child: Text(
                         (data['start_date'] ?? 'Dates to be announced')
                             .toString(),
-                        style: const TextStyle(
-                          fontSize: 10,
-                          color: Color(0xFF1A1A1A),
-                        ),
+                        style: text.bodySmall?.copyWith(color: colors.muted),
                       ),
                     ),
                     FilledButton.icon(
                       onPressed: () async {
                         if (await openClass(context, data)) onDeleted();
                       },
-                      style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFFFF8C00),
-                        visualDensity: VisualDensity.compact,
-                      ),
-                      icon: const Icon(Icons.arrow_forward, size: 15),
+                      icon: const Icon(Icons.arrow_forward, size: 16),
                       label: const Text('Details'),
                     ),
                   ],
@@ -2111,14 +2147,15 @@ class _Card extends StatelessWidget {
             : format == 'demo_poll'
             ? 'Demo vote'
             : 'Class');
+    final colors = AppPalette.of(context);
+    final text = Theme.of(context).textTheme;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 15),
+      padding: const EdgeInsets.only(bottom: 14),
       child: Material(
-        color: Colors.white,
-        elevation: 2,
+        color: colors.card,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(18),
-          side: const BorderSide(color: Color(0x66000000), width: 1),
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: colors.line),
         ),
         clipBehavior: Clip.antiAlias,
         child: InkWell(
@@ -2138,23 +2175,23 @@ class _Card extends StatelessWidget {
                             fit: BoxFit.cover,
                           )
                         : image.isEmpty
-                        ? Container(
-                            color: const Color(0xFFFFE8D6),
-                            child: const Icon(
-                              Icons.auto_awesome,
-                              color: const Color(0xFFD66D27),
-                              size: 52,
+                        ? ColoredBox(
+                            color: colors.imageFallback,
+                            child: Icon(
+                              Icons.auto_stories_outlined,
+                              color: colors.accent,
+                              size: 48,
                             ),
                           )
                         : Image.network(
                             image,
                             fit: BoxFit.cover,
-                            errorBuilder: (context, error, stack) => Container(
-                              color: const Color(0xFFFFE8D6),
-                              child: const Icon(
-                                Icons.auto_awesome,
-                                color: const Color(0xFFD66D27),
-                                size: 52,
+                            errorBuilder: (context, error, stack) => ColoredBox(
+                              color: colors.imageFallback,
+                              child: Icon(
+                                Icons.auto_stories_outlined,
+                                color: colors.accent,
+                                size: 48,
                               ),
                             ),
                           ),
@@ -2163,14 +2200,18 @@ class _Card extends StatelessWidget {
                       top: 12,
                       child: _Badge(
                         formats[format] ?? 'Class',
-                        Colors.white,
-                        ink,
+                        colors.card,
+                        colors.ink,
                       ),
                     ),
                     Positioned(
                       right: 12,
                       top: 12,
-                      child: _Badge(listingPrice(data), ink, gold),
+                      child: _Badge(
+                        listingPrice(data),
+                        colors.accent,
+                        colors.onAccent,
+                      ),
                     ),
                   ],
                 ),
@@ -2181,24 +2222,15 @@ class _Card extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      '${categoryName.toUpperCase()}${data['subcategory'] == null ? '' : ' · ${data['subcategory']}'}',
-                      style: const TextStyle(
-                        fontSize: 10,
-                        color: Color(0xFF1A1A1A),
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.2,
-                      ),
+                      '$categoryName${data['subcategory'] == null ? '' : ' · ${data['subcategory']}'}',
+                      style: text.bodySmall?.copyWith(color: colors.muted),
                     ),
                     const SizedBox(height: 6),
                     Text(
                       title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF1A1A1A),
-                      ),
+                      style: text.titleMedium,
                     ),
                     if (format == 'class_request' || format == 'demo_poll')
                       CommunityActivity(
@@ -2208,9 +2240,9 @@ class _Card extends StatelessWidget {
                         creatorName: (data['creatorName'] ?? 'Member')
                             .toString(),
                       ),
-                    const SizedBox(height: 11),
-                    const Divider(color: border, height: 1),
-                    const SizedBox(height: 9),
+                    const SizedBox(height: 12),
+                    Divider(color: colors.line, height: 1),
+                    const SizedBox(height: 10),
                     Row(
                       children: [
                         Expanded(
@@ -2218,22 +2250,20 @@ class _Card extends StatelessWidget {
                             (data['start_date'] ?? 'Dates to be announced')
                                 .toString(),
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              color: Color(0xFF1A1A1A),
-                            ),
+                            style: text.bodySmall?.copyWith(color: colors.muted),
                           ),
                         ),
-                        const Icon(
+                        Icon(
                           Icons.location_on_outlined,
-                          color: const Color(0xFFD66D27),
-                          size: 15,
+                          color: colors.accent,
+                          size: 16,
                         ),
+                        const SizedBox(width: 2),
                         Text(
                           format == 'online'
                               ? 'Online'
                               : (data['city'] ?? 'Any city').toString(),
-                          style: const TextStyle(fontSize: 11, color: ink),
+                          style: text.bodySmall?.copyWith(color: colors.ink),
                         ),
                       ],
                     ),
@@ -2271,41 +2301,20 @@ class _Badge extends StatelessWidget {
 }
 
 class _Notice extends StatelessWidget {
-  const _Notice(this.title, this.detail, {this.onPost});
-  final String title, detail;
+  const _Notice(
+    this.title,
+    this.detail, {
+    this.actionLabel = 'Post a class',
+    this.onPost,
+  });
+  final String title, detail, actionLabel;
   final VoidCallback? onPost;
   @override
-  Widget build(BuildContext context) => Container(
-    padding: const EdgeInsets.all(26),
-    decoration: BoxDecoration(
-      color: paper,
-      border: Border.all(color: border),
-      borderRadius: BorderRadius.circular(18),
-    ),
-    child: Column(
-      children: [
-        const Icon(Icons.auto_awesome, color: gold, size: 30),
-        const SizedBox(height: 10),
-        Text(
-          title,
-          style: const TextStyle(fontFamily: 'serif', fontSize: 21, color: ink),
-        ),
-        const SizedBox(height: 7),
-        Text(
-          detail,
-          textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 13, color: muted),
-        ),
-        if (onPost != null) ...[
-          const SizedBox(height: 15),
-          FilledButton(
-            onPressed: onPost,
-            style: FilledButton.styleFrom(backgroundColor: clay),
-            child: const Text('Post a class'),
-          ),
-        ],
-      ],
-    ),
+  Widget build(BuildContext context) => AppEmpty(
+    title: title,
+    message: detail,
+    actionLabel: onPost == null ? null : actionLabel,
+    onAction: onPost,
   );
 }
 
@@ -2335,68 +2344,49 @@ class _CountBadge extends StatelessWidget {
   final int count;
 
   @override
-  Widget build(BuildContext context) => Container(
-    margin: const EdgeInsets.only(right: 4),
-    padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-    decoration: BoxDecoration(
-      color: const Color(0xFF195548),
-      borderRadius: BorderRadius.circular(12),
-    ),
-    child: Text(
-      '$count',
-      style: const TextStyle(
-        color: Colors.white,
-        fontSize: 11,
-        fontWeight: FontWeight.w700,
+  Widget build(BuildContext context) {
+    final colors = AppPalette.of(context);
+    return Container(
+      margin: const EdgeInsets.only(right: 4),
+      constraints: const BoxConstraints(minWidth: 28, minHeight: 24),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: colors.accent,
+        borderRadius: BorderRadius.circular(12),
       ),
-    ),
-  );
-}
-
-class _Tab extends StatelessWidget {
-  const _Tab(this.icon, this.label, this.active, [this.onTap]);
-  final IconData icon;
-  final String label;
-  final bool active;
-  final VoidCallback? onTap;
-  @override
-  Widget build(BuildContext context) => InkWell(
-    onTap: onTap,
-    child: Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(icon, color: active ? const Color(0xFFFF8C00) : muted),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            color: active ? const Color(0xFF1A1A1A) : muted,
-          ),
+      alignment: Alignment.center,
+      child: Text(
+        '$count',
+        style: TextStyle(
+          color: colors.onAccent,
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
         ),
-      ],
-    ),
-  );
+      ),
+    );
+  }
 }
 
 void showProfile(BuildContext context) => showModalBottomSheet(
   context: context,
-  backgroundColor: Colors.white,
-  builder: (context) => const Padding(
-    padding: EdgeInsets.all(24),
+  showDragHandle: true,
+  builder: (context) => Padding(
+    padding: const EdgeInsets.fromLTRB(24, 8, 24, 28),
     child: Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
           'Welcome to Master Class',
-          style: TextStyle(fontFamily: 'serif', fontSize: 26, color: ink),
+          style: Theme.of(context).textTheme.headlineSmall,
         ),
-        SizedBox(height: 8),
+        const SizedBox(height: 8),
         Text(
           'Browse classes and share your knowledge.',
-          style: TextStyle(color: muted),
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: AppPalette.of(context).muted,
+          ),
         ),
-        SizedBox(height: 15),
       ],
     ),
   ),

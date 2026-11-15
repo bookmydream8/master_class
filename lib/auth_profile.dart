@@ -12,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:image_picker/image_picker.dart';
 
+import 'app_theme.dart';
 import 'madhura_board.dart' as board;
 import 'madhura_detail.dart' show showMasterClassDetails;
 import 'madhura_post.dart';
@@ -94,98 +95,76 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: Colors.white,
-    appBar: AppBar(
-      backgroundColor: board.paper,
-      foregroundColor: board.ink,
-      title: const Text('Master Class', style: TextStyle(fontFamily: 'serif')),
-    ),
-    body: SafeArea(
-      child: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 430),
-            padding: const EdgeInsets.all(22),
-            decoration: BoxDecoration(
-              color: board.paper,
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: board.border),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: board.gold,
-                    borderRadius: BorderRadius.circular(15),
-                  ),
-                  child: const Text(
-                    'G',
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w700,
-                      color: board.ink,
+  Widget build(BuildContext context) {
+    final colors = AppPalette.of(context);
+    final text = Theme.of(context).textTheme;
+    return Scaffold(
+      appBar: AppBar(title: const Text('Master Class')),
+      body: SafeArea(
+        child: Center(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 440),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: Image.asset(
+                      'logo.png',
+                      width: 56,
+                      height: 56,
+                      fit: BoxFit.cover,
                     ),
                   ),
-                ),
-                const SizedBox(height: 18),
-                const Text(
-                  'Sign in with Google',
-                  style: TextStyle(
-                    fontFamily: 'serif',
-                    fontSize: 28,
-                    color: board.ink,
+                  const SizedBox(height: 20),
+                  Text('Welcome', style: text.headlineMedium),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Sign in to view class details, publish a class, and manage your profile.',
+                    style: text.bodyLarge?.copyWith(color: colors.muted),
                   ),
-                ),
-                const SizedBox(height: 7),
-                const Text(
-                  'Use your Google account to view class details, publish a class, and manage your profile.',
-                  style: TextStyle(color: board.muted, height: 1.4),
-                ),
-                if (error != null)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 14),
-                    child: Text(
-                      error!,
-                      style: const TextStyle(color: board.clay, fontSize: 13),
-                    ),
-                  ),
-                const SizedBox(height: 22),
-                FilledButton.icon(
-                  onPressed: busy ? null : signInWithGoogle,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: board.ink,
-                    foregroundColor: board.paper,
-                    minimumSize: const Size.fromHeight(50),
-                  ),
-                  icon: const CircleAvatar(
-                    radius: 11,
-                    backgroundColor: Colors.white,
-                    child: Text(
-                      'G',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: board.ink,
+                  if (error != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 14),
+                      child: Text(
+                        error!,
+                        style: text.bodyMedium?.copyWith(
+                          color: Theme.of(context).colorScheme.error,
+                        ),
                       ),
                     ),
+                  const SizedBox(height: 24),
+                  FilledButton.icon(
+                    onPressed: busy ? null : signInWithGoogle,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(52),
+                    ),
+                    icon: CircleAvatar(
+                      radius: 12,
+                      backgroundColor: colors.card,
+                      child: Text(
+                        'G',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: colors.accent,
+                        ),
+                      ),
+                    ),
+                    label: Text(
+                      busy ? 'Opening Google…' : 'Continue with Google',
+                    ),
                   ),
-                  label: Text(
-                    busy ? 'Opening Google…' : 'Continue with Google',
-                  ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class RegistrationPage extends StatefulWidget {
@@ -266,32 +245,20 @@ class _RegistrationPageState extends State<RegistrationPage> {
   }
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    backgroundColor: Colors.white,
-    appBar: AppBar(
-      backgroundColor: board.paper,
-      foregroundColor: board.ink,
-      title: const Text(
-        'Complete your profile',
-        style: TextStyle(fontFamily: 'serif'),
-      ),
-    ),
+  Widget build(BuildContext context) {
+    final colors = AppPalette.of(context);
+    final text = Theme.of(context).textTheme;
+    return Scaffold(
+    appBar: AppBar(title: const Text('Complete your profile')),
     body: SafeArea(
       child: ListView(
         padding: const EdgeInsets.all(20),
         children: [
-          const Text(
-            'Welcome to Master Class',
-            style: TextStyle(
-              fontFamily: 'serif',
-              fontSize: 27,
-              color: board.ink,
-            ),
-          ),
+          Text('Welcome to Master Class', style: text.headlineSmall),
           const SizedBox(height: 8),
-          const Text(
+          Text(
             'Your Google name and photo are used automatically. Add the details below to personalise classes.',
-            style: TextStyle(color: board.muted, height: 1.4),
+            style: text.bodyMedium?.copyWith(color: colors.muted),
           ),
           const SizedBox(height: 20),
           if ((user.photoURL ?? '').isEmpty || selectedPhoto != null)
@@ -326,21 +293,22 @@ class _RegistrationPageState extends State<RegistrationPage> {
           if (error != null)
             Padding(
               padding: const EdgeInsets.only(top: 12),
-              child: Text(error!, style: const TextStyle(color: board.clay)),
+              child:             Text(
+              error!,
+              style: TextStyle(color: Theme.of(context).colorScheme.error),
+            ),
             ),
           const SizedBox(height: 20),
           FilledButton(
             onPressed: saving ? null : save,
-            style: FilledButton.styleFrom(
-              backgroundColor: board.clay,
-              minimumSize: const Size.fromHeight(48),
-            ),
+            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(52)),
             child: Text(saving ? 'Saving…' : 'Continue'),
           ),
         ],
       ),
     ),
   );
+  }
 }
 
 class ProfilePage extends StatefulWidget {
@@ -464,14 +432,8 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    backgroundColor: Colors.white,
     appBar: AppBar(
-      backgroundColor: board.paper,
-      foregroundColor: board.ink,
-      title: const Text(
-        'Profile',
-        style: TextStyle(fontWeight: FontWeight.w800),
-      ),
+      title: const Text('Profile'),
       actions: [
         TextButton.icon(
           onPressed: saving
@@ -483,7 +445,9 @@ class _ProfilePageState extends State<ProfilePage> {
                 }),
           icon: Icon(editing ? Icons.close : Icons.edit_outlined),
           label: Text(editing ? 'Cancel' : 'Edit'),
-          style: TextButton.styleFrom(foregroundColor: board.clay),
+          style: TextButton.styleFrom(
+            foregroundColor: Theme.of(context).colorScheme.primary,
+          ),
         ),
         const SizedBox(width: 6),
       ],
@@ -507,11 +471,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     Text(
                       user.displayName ?? 'Google account',
                       textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 21,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF1A1A1A),
-                      ),
+                      style: Theme.of(context).textTheme.headlineSmall,
                     ),
                     if (profileCity.isNotEmpty) ...[
                       const SizedBox(height: 5),
@@ -546,11 +506,7 @@ class _ProfilePageState extends State<ProfilePage> {
               const SizedBox(height: 18),
               Container(
                 padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: const Color(0xFFECECEC)),
-                ),
+                decoration: appCardDecoration(context, radius: 20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -576,6 +532,7 @@ class _ProfilePageState extends State<ProfilePage> {
                         minLines: 3,
                         maxLines: 5,
                         decoration: _field(
+                          context,
                           'Your skills, experience, and subjects you teach',
                         ),
                       )
@@ -584,9 +541,9 @@ class _ProfilePageState extends State<ProfilePage> {
                         width: double.infinity,
                         padding: const EdgeInsets.all(14),
                         decoration: BoxDecoration(
-                          color: board.cream,
+                          color: AppPalette.of(context).canvas,
                           borderRadius: BorderRadius.circular(12),
-                          border: Border.all(color: board.border),
+                          border: Border.all(color: AppPalette.of(context).line),
                         ),
                         child: Text(
                           expertDetails.text.trim().isEmpty
@@ -594,9 +551,10 @@ class _ProfilePageState extends State<ProfilePage> {
                               : expertDetails.text.trim(),
                           style: TextStyle(
                             height: 1.45,
+                            fontSize: 14,
                             color: expertDetails.text.trim().isEmpty
-                                ? board.muted
-                                : board.ink,
+                                ? AppPalette.of(context).muted
+                                : AppPalette.of(context).ink,
                           ),
                         ),
                       ),
@@ -605,7 +563,9 @@ class _ProfilePageState extends State<ProfilePage> {
                         padding: const EdgeInsets.only(top: 12),
                         child: Text(
                           error!,
-                          style: const TextStyle(color: board.clay),
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
                         ),
                       ),
                     if (editing) ...[
@@ -613,8 +573,7 @@ class _ProfilePageState extends State<ProfilePage> {
                       FilledButton.icon(
                         onPressed: saving ? null : save,
                         style: FilledButton.styleFrom(
-                          backgroundColor: board.clay,
-                          minimumSize: const Size.fromHeight(48),
+                          minimumSize: const Size.fromHeight(52),
                         ),
                         icon: const Icon(Icons.save_outlined),
                         label: Text(saving ? 'Saving…' : 'Save changes'),
@@ -624,55 +583,55 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               ),
               const SizedBox(height: 14),
-              Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEDF8EF),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFFCDE8D1)),
-                ),
-                child: const Row(
-                  children: [
-                    Icon(
-                      Icons.school_outlined,
-                      color: Color(0xFF1B6D24),
-                      size: 30,
+              Builder(
+                builder: (context) {
+                  final colors = AppPalette.of(context);
+                  final text = Theme.of(context).textTheme;
+                  return Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: colors.accentSoft,
+                      borderRadius: BorderRadius.circular(20),
                     ),
-                    SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'YOUR CLASSES',
-                            style: TextStyle(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w900,
-                              color: Color(0xFF1B6D24),
-                              letterSpacing: 1,
-                            ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.school_outlined,
+                          color: colors.onAccentSoft,
+                          size: 30,
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'YOUR CLASSES',
+                                style: text.labelSmall?.copyWith(
+                                  color: colors.onAccentSoft,
+                                  letterSpacing: 1,
+                                ),
+                              ),
+                              const SizedBox(height: 3),
+                              Text(
+                                'Manage your posts',
+                                style: text.titleMedium?.copyWith(
+                                  color: colors.onAccentSoft,
+                                ),
+                              ),
+                              Text(
+                                'Open a class to view it, or tap Update',
+                                style: text.bodySmall?.copyWith(
+                                  color: colors.onAccentSoft,
+                                ),
+                              ),
+                            ],
                           ),
-                          SizedBox(height: 3),
-                          Text(
-                            'Manage your posts',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w800,
-                              color: Color(0xFF173A1B),
-                            ),
-                          ),
-                          Text(
-                            'Open a class to view it or tap Update',
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF55725A),
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                  );
+                },
               ),
               StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
                 stream: firestore
@@ -681,11 +640,12 @@ class _ProfilePageState extends State<ProfilePage> {
                     .snapshots(),
                 builder: (context, snapshot) {
                   final classes = snapshot.data?.docs ?? [];
-                  if (classes.isEmpty)
-                    return const Text(
+                  if (classes.isEmpty) {
+                    return Text(
                       'No classes posted yet.',
-                      style: TextStyle(color: board.muted),
+                      style: TextStyle(color: AppPalette.of(context).muted),
                     );
+                  }
                   return GridView.builder(
                     shrinkWrap: true,
                     physics: const NeverScrollableScrollPhysics(),
@@ -734,11 +694,12 @@ class _ProfilePageState extends State<ProfilePage> {
                           .where((doc) => doc.data()['status'] == 'interested')
                           .toList() ??
                       [];
-                  if (interests.isEmpty)
-                    return const Text(
+                  if (interests.isEmpty) {
+                    return Text(
                       'No class interests yet.',
-                      style: TextStyle(color: board.muted),
+                      style: TextStyle(color: AppPalette.of(context).muted),
                     );
+                  }
                   return Column(
                     children: interests
                         .map(
@@ -761,30 +722,28 @@ class _ProfilePageState extends State<ProfilePage> {
               const SizedBox(height: 14),
               const _ProfileLabel('ACCOUNT'),
               Card(
-                color: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
-                  side: const BorderSide(color: Color(0xFFE9DED1)),
-                ),
                 child: ListTile(
                   onTap: () async {
                     await FirebaseAuth.instance.signOut();
                     await _googleSignIn.signOut();
-                    if (!mounted) return;
+                    if (!context.mounted) return;
                     Navigator.of(context).popUntil((route) => route.isFirst);
                   },
-                  leading: const Icon(Icons.logout, color: Color(0xFFE11D48)),
-                  title: const Text(
+                  leading: Icon(
+                    Icons.logout,
+                    color: Theme.of(context).colorScheme.error,
+                  ),
+                  title: Text(
                     'Sign out',
                     style: TextStyle(
                       fontWeight: FontWeight.w700,
-                      color: Color(0xFFE11D48),
+                      color: Theme.of(context).colorScheme.error,
                     ),
                   ),
                   subtitle: const Text('Sign out of your account'),
-                  trailing: const Icon(
+                  trailing: Icon(
                     Icons.chevron_right,
-                    color: Color(0xFF8B8B8B),
+                    color: AppPalette.of(context).muted,
                   ),
                 ),
               ),
@@ -847,13 +806,12 @@ class _PostedClassCard extends StatelessWidget {
       return const _PostedClassImagePlaceholder();
     }
 
+    final colors = AppPalette.of(context);
     return Material(
-      color: Colors.white,
-      elevation: 2,
-      shadowColor: const Color(0x16241912),
+      color: colors.card,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
-        side: const BorderSide(color: Color(0x66000000), width: 1),
+        side: BorderSide(color: colors.line),
       ),
       child: InkWell(
         onTap: onOpen,
@@ -984,12 +942,15 @@ class _PostedClassImagePlaceholder extends StatelessWidget {
   const _PostedClassImagePlaceholder();
 
   @override
-  Widget build(BuildContext context) => const ColoredBox(
-    color: Color(0xFFEEDFCB),
-    child: Center(
-      child: Icon(Icons.auto_stories_outlined, color: Color(0xFFD87824)),
-    ),
-  );
+  Widget build(BuildContext context) {
+    final colors = AppPalette.of(context);
+    return ColoredBox(
+      color: colors.imageFallback,
+      child: Center(
+        child: Icon(Icons.auto_stories_outlined, color: colors.accent),
+      ),
+    );
+  }
 }
 
 class _Avatar extends StatelessWidget {
@@ -997,21 +958,24 @@ class _Avatar extends StatelessWidget {
   final String url, name;
   final File? localPhoto;
   @override
-  Widget build(BuildContext context) => CircleAvatar(
-    radius: 46,
-    backgroundColor: board.gold,
-    foregroundImage: localPhoto != null
-        ? FileImage(localPhoto!)
-        : (url.trim().isEmpty ? null : NetworkImage(url.trim())),
-    child: Text(
-      name.trim().isEmpty ? '?' : name.trim().substring(0, 1).toUpperCase(),
-      style: const TextStyle(
-        fontFamily: 'serif',
-        fontSize: 34,
-        color: board.ink,
+  Widget build(BuildContext context) {
+    final colors = AppPalette.of(context);
+    return CircleAvatar(
+      radius: 46,
+      backgroundColor: colors.accentSoft,
+      foregroundImage: localPhoto != null
+          ? FileImage(localPhoto!)
+          : (url.trim().isEmpty ? null : NetworkImage(url.trim())),
+      child: Text(
+        name.trim().isEmpty ? '?' : name.trim().substring(0, 1).toUpperCase(),
+        style: TextStyle(
+          fontSize: 34,
+          fontWeight: FontWeight.w700,
+          color: colors.onAccentSoft,
+        ),
       ),
-    ),
-  );
+    );
+  }
 }
 
 class _ProfileInfoRow extends StatelessWidget {
@@ -1088,20 +1052,23 @@ class _ProfileLabel extends StatelessWidget {
   );
 }
 
-InputDecoration _field(String hint) => InputDecoration(
-  hintText: hint,
-  hintStyle: const TextStyle(color: board.muted, fontSize: 13),
-  filled: true,
-  fillColor: board.cream,
-  border: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(12),
-    borderSide: const BorderSide(color: board.border),
-  ),
-  enabledBorder: OutlineInputBorder(
-    borderRadius: BorderRadius.circular(12),
-    borderSide: const BorderSide(color: board.border),
-  ),
-);
+InputDecoration _field(BuildContext context, String hint) {
+  final colors = AppPalette.of(context);
+  return InputDecoration(
+    hintText: hint,
+    hintStyle: TextStyle(color: colors.muted, fontSize: 14),
+    filled: true,
+    fillColor: colors.canvas,
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: BorderSide(color: colors.line),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(14),
+      borderSide: BorderSide(color: colors.line),
+    ),
+  );
+}
 
 class _InterestSessionAccess extends StatelessWidget {
   const _InterestSessionAccess({required this.listingId});
@@ -1111,10 +1078,11 @@ class _InterestSessionAccess extends StatelessWidget {
     final uri = Uri.tryParse(link);
     if (uri == null ||
         !await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      if (context.mounted)
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Could not open the session link.')),
         );
+      }
     }
   }
 
@@ -1126,8 +1094,9 @@ class _InterestSessionAccess extends StatelessWidget {
             : firestore.collection('listings_contact').doc(listingId).get(),
         builder: (context, snapshot) {
           final data = snapshot.data?.data();
-          if (data == null)
+          if (data == null) {
             return const Text('Private session details are not available yet.');
+          }
           final contact = (data['contactNumber'] ?? '').toString();
           final session = (data['sessionLink'] ?? '').toString();
           return Column(

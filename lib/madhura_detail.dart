@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'admin_moderation.dart';
+import 'app_theme.dart';
 import 'firestore_database.dart';
 import 'madhura_board.dart' as board;
 
@@ -22,9 +23,11 @@ class MasterClassDetailPage extends StatelessWidget {
 
   Future<void> copy(BuildContext context, String value, String message) async {
     await Clipboard.setData(ClipboardData(text: value));
-    if (context.mounted)
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(message)));
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    }
   }
 
   Future<void> openInMaps(BuildContext context, String link) async {
@@ -84,11 +87,10 @@ class MasterClassDetailPage extends StatelessWidget {
     final expiryDate = (data['expiry_date'] ?? '').toString();
     final listingId = (data['id'] ?? '').toString();
     final isOwner = FirebaseAuth.instance.currentUser?.uid == data['creatorId'];
+    final colors = AppPalette.of(context);
+    final text = Theme.of(context).textTheme;
     return Scaffold(
-      backgroundColor: Colors.white,
       appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: board.ink,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -96,11 +98,11 @@ class MasterClassDetailPage extends StatelessWidget {
               title,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+              style: text.titleMedium,
             ),
             Text(
               board.formats[format] ?? 'Class',
-              style: const TextStyle(fontSize: 10, color: board.muted),
+              style: text.labelSmall?.copyWith(color: colors.muted),
             ),
           ],
         ),
@@ -126,33 +128,33 @@ class MasterClassDetailPage extends StatelessWidget {
                     ? Image.memory(
                         base64Decode(imageBase64),
                         fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => const ColoredBox(
-                          color: Color(0xFFFFE8D6),
+                        errorBuilder: (_, _, _) => ColoredBox(
+                          color: colors.imageFallback,
                           child: Icon(
                             Icons.auto_stories_outlined,
                             size: 64,
-                            color: Color(0xFFD66D27),
+                            color: colors.accent,
                           ),
                         ),
                       )
                     : image.isEmpty
-                    ? const ColoredBox(
-                        color: Color(0xFFFFE8D6),
+                    ? ColoredBox(
+                        color: colors.imageFallback,
                         child: Icon(
                           Icons.auto_stories_outlined,
                           size: 64,
-                          color: Color(0xFFD66D27),
+                          color: colors.accent,
                         ),
                       )
                     : Image.network(
                         image,
                         fit: BoxFit.cover,
-                        errorBuilder: (_, _, _) => const ColoredBox(
-                          color: Color(0xFFFFE8D6),
+                        errorBuilder: (_, _, _) => ColoredBox(
+                          color: colors.imageFallback,
                           child: Icon(
                             Icons.auto_stories_outlined,
                             size: 64,
-                            color: Color(0xFFD66D27),
+                            color: colors.accent,
                           ),
                         ),
                       ),
@@ -165,25 +167,11 @@ class MasterClassDetailPage extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '${board.formats[format] ?? 'Class'} · $category${data['subcategory'] == null ? '' : ' · ${data['subcategory']}'}'
-                      .toUpperCase(),
-                  style: const TextStyle(
-                    fontSize: 10,
-                    letterSpacing: 1.1,
-                    fontWeight: FontWeight.w800,
-                    color: board.muted,
-                  ),
+                  '${board.formats[format] ?? 'Class'} · $category${data['subcategory'] == null ? '' : ' · ${data['subcategory']}'}',
+                  style: text.bodySmall?.copyWith(color: colors.muted),
                 ),
                 const SizedBox(height: 8),
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 25,
-                    height: 1.13,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF1A1A1A),
-                  ),
-                ),
+                Text(title, style: text.headlineSmall?.copyWith(color: colors.ink)),
                 const SizedBox(height: 18),
                 Row(
                   children: [
@@ -233,20 +221,18 @@ class MasterClassDetailPage extends StatelessWidget {
                     padding: const EdgeInsets.all(15),
                     margin: const EdgeInsets.only(bottom: 13),
                     decoration: BoxDecoration(
-                      color: board.paper,
-                      border: Border.all(color: board.border),
-                      borderRadius: BorderRadius.circular(17),
+                      color: colors.card,
+                      border: Border.all(color: colors.line),
+                      borderRadius: BorderRadius.circular(18),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
+                        Text(
                           'VENUE',
-                          style: TextStyle(
-                            fontSize: 10,
-                            letterSpacing: 1.2,
-                            color: board.muted,
-                            fontWeight: FontWeight.w700,
+                          style: text.labelSmall?.copyWith(
+                            letterSpacing: 1.1,
+                            color: colors.muted,
                           ),
                         ),
                         const SizedBox(height: 9),
@@ -271,74 +257,72 @@ class _Stat extends StatelessWidget {
   const _Stat(this.label, this.value);
   final String label, value;
   @override
-  Widget build(BuildContext context) => Container(
-    height: 66,
-    padding: const EdgeInsets.all(9),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      border: Border.all(color: const Color(0xFFECECEC)),
-      borderRadius: BorderRadius.circular(12),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 9,
-            color: board.muted,
-            letterSpacing: 1.1,
+  Widget build(BuildContext context) {
+    final colors = AppPalette.of(context);
+    final text = Theme.of(context).textTheme;
+    return Container(
+      constraints: const BoxConstraints(minHeight: 76),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: colors.card,
+        border: Border.all(color: colors.line),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: text.labelSmall?.copyWith(
+              color: colors.muted,
+              letterSpacing: 0.8,
+            ),
           ),
-        ),
-        const SizedBox(height: 6),
-        Text(
-          value,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            fontSize: 12,
-            color: board.ink,
-            fontWeight: FontWeight.w600,
+          const SizedBox(height: 6),
+          Text(
+            value,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: text.titleSmall?.copyWith(color: colors.ink),
           ),
-        ),
-      ],
-    ),
-  );
+        ],
+      ),
+    );
+  }
 }
 
 class _Section extends StatelessWidget {
   const _Section(this.title, this.body);
   final String title, body;
   @override
-  Widget build(BuildContext context) => Container(
-    width: double.infinity,
-    padding: const EdgeInsets.all(15),
-    margin: const EdgeInsets.only(bottom: 13),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      border: Border.all(color: const Color(0xFFECECEC)),
-      borderRadius: BorderRadius.circular(17),
-    ),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 10,
-            letterSpacing: 1.2,
-            color: board.muted,
-            fontWeight: FontWeight.w700,
+  Widget build(BuildContext context) {
+    final colors = AppPalette.of(context);
+    final text = Theme.of(context).textTheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: colors.card,
+        border: Border.all(color: colors.line),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: text.labelSmall?.copyWith(
+              letterSpacing: 1.1,
+              color: colors.muted,
+            ),
           ),
-        ),
-        const SizedBox(height: 9),
-        Text(
-          body,
-          style: const TextStyle(fontSize: 14, height: 1.5, color: board.ink),
-        ),
-      ],
-    ),
-  );
+          const SizedBox(height: 8),
+          Text(body, style: text.bodyMedium?.copyWith(color: colors.ink)),
+        ],
+      ),
+    );
+  }
 }
 
 class ClassInterestCount extends StatelessWidget {
@@ -360,24 +344,25 @@ class ClassInterestCount extends StatelessWidget {
                       const <QueryDocumentSnapshot<Map<String, dynamic>>>[])
                   .where((doc) => doc.data()['status'] == 'interested')
                   .length;
+          final colors = AppPalette.of(context);
           return Container(
             width: double.infinity,
-            padding: const EdgeInsets.all(15),
-            margin: const EdgeInsets.only(bottom: 13),
+            padding: const EdgeInsets.all(16),
+            margin: const EdgeInsets.only(bottom: 12),
             decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border.all(color: const Color(0xFFECECEC)),
-              borderRadius: BorderRadius.circular(17),
+              color: colors.accentSoft,
+              borderRadius: BorderRadius.circular(18),
             ),
             child: Row(
               children: [
-                const Icon(Icons.people_outline, color: board.clay),
-                const SizedBox(width: 9),
-                Text(
-                  '$count learner${count == 1 ? '' : 's'} interested',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w700,
-                    color: board.ink,
+                Icon(Icons.people_outline, color: colors.onAccentSoft),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    '$count learner${count == 1 ? '' : 's'} interested',
+                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                      color: colors.onAccentSoft,
+                    ),
                   ),
                 ),
               ],
@@ -492,7 +477,10 @@ class _ClassInterestPanelState extends State<_ClassInterestPanel> {
             if (error != null)
               Padding(
                 padding: const EdgeInsets.only(top: 8),
-                child: Text(error!, style: const TextStyle(color: board.clay)),
+                child: Text(
+                error!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
               ),
           ],
         );
@@ -509,10 +497,11 @@ class _PrivateClassAccess extends StatelessWidget {
     final uri = Uri.tryParse(link);
     if (uri == null ||
         !await launchUrl(uri, mode: LaunchMode.externalApplication)) {
-      if (context.mounted)
+      if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Could not open the session link.')),
         );
+      }
     }
   }
 
@@ -521,40 +510,41 @@ class _PrivateClassAccess extends StatelessWidget {
       FutureBuilder<DocumentSnapshot<Map<String, dynamic>>>(
         future: firestore.collection('listings_contact').doc(listingId).get(),
         builder: (context, snapshot) {
-          if (!snapshot.hasData)
+          if (!snapshot.hasData) {
             return const Padding(
               padding: EdgeInsets.only(top: 10),
               child: LinearProgressIndicator(),
             );
+          }
           final data = snapshot.data!.data();
-          if (data == null)
-            return const Padding(
-              padding: EdgeInsets.only(top: 10),
+          if (data == null) {
+            return Padding(
+              padding: const EdgeInsets.only(top: 10),
               child: Text(
                 'The owner has not added private session details yet.',
-                style: TextStyle(color: board.muted),
+                style: TextStyle(color: AppPalette.of(context).muted),
               ),
             );
+          }
           final contact = (data['contactNumber'] ?? '').toString();
           final session = (data['sessionLink'] ?? '').toString();
+          final colors = AppPalette.of(context);
           return Container(
             margin: const EdgeInsets.only(top: 10),
-            padding: const EdgeInsets.all(14),
+            padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: Colors.white,
-              border: Border.all(color: const Color(0xFFECECEC)),
-              borderRadius: BorderRadius.circular(14),
+              color: colors.card,
+              border: Border.all(color: colors.line),
+              borderRadius: BorderRadius.circular(16),
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'PRIVATE CLASS ACCESS',
-                  style: TextStyle(
-                    fontSize: 10,
+                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     letterSpacing: 1.1,
-                    color: board.muted,
-                    fontWeight: FontWeight.w700,
+                    color: colors.muted,
                   ),
                 ),
                 if (contact.isNotEmpty) ...[
@@ -596,24 +586,23 @@ class _OwnerInterestList extends StatelessWidget {
               .toList() ??
           [];
       if (people.isEmpty) return const SizedBox.shrink();
+      final colors = AppPalette.of(context);
       return Container(
-        margin: const EdgeInsets.only(bottom: 13),
-        padding: const EdgeInsets.all(14),
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border.all(color: const Color(0xFFECECEC)),
-          borderRadius: BorderRadius.circular(14),
+          color: colors.card,
+          border: Border.all(color: colors.line),
+          borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
+            Text(
               'INTERESTED LEARNERS',
-              style: TextStyle(
-                fontSize: 10,
+              style: Theme.of(context).textTheme.labelSmall?.copyWith(
                 letterSpacing: 1.1,
-                color: board.muted,
-                fontWeight: FontWeight.w700,
+                color: colors.muted,
               ),
             ),
             for (final person in people)
