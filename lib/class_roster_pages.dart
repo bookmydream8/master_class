@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 
 import 'app_theme.dart';
 import 'category_style.dart';
+import 'class_batches.dart';
+import 'class_reminders.dart';
 import 'class_roster.dart';
+import 'upi_payment.dart';
 import 'firestore_database.dart';
 import 'member_id.dart';
 
@@ -187,6 +190,7 @@ class _EnrolmentPageState extends State<EnrolmentPage> {
         feeAmount: classFeeAmount(widget.listing),
         feePeriod: classFeePeriod(widget.listing),
       );
+      await scheduleClassReminders(widget.listing);
       if (mounted) Navigator.pop(context, true);
     } catch (e) {
       if (mounted) setState(() => error = 'Could not save enrolment.');
@@ -310,7 +314,9 @@ class AttendancePage extends StatefulWidget {
 
 class _AttendancePageState extends State<AttendancePage> {
   ClassRoster? roster;
+  List<ClassBatch> batches = [];
   String? date;
+  String? batchFilter;
   String viewerMcId = '';
   bool loading = true;
 
@@ -335,9 +341,11 @@ class _AttendancePageState extends State<AttendancePage> {
       feeAmount: classFeeAmount(widget.listing),
       feePeriod: classFeePeriod(widget.listing),
     );
+    final loadedBatches = await BatchStore.instance.load(listingId);
     if (!mounted) return;
     setState(() {
       roster = loaded;
+      batches = loadedBatches;
       viewerMcId = id;
       date = loaded.sessionDates.isEmpty ? null : loaded.sessionDates.last;
       loading = false;
@@ -385,6 +393,32 @@ class _AttendancePageState extends State<AttendancePage> {
                   style: text.bodyMedium?.copyWith(color: colors.muted),
                 ),
                 const SizedBox(height: 12),
+                if (batches.isNotEmpty)
+                  SizedBox(
+                    height: 42,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: ChoiceChip(
+                            label: const Text('All batches'),
+                            selected: batchFilter == null,
+                            onSelected: (_) => setState(() => batchFilter = null),
+                          ),
+                        ),
+                        for (final batch in batches)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 8),
+                            child: ChoiceChip(
+                              label: Text(batch.name),
+                              selected: batchFilter == batch.id,
+                              onSelected: (_) => setState(() => batchFilter = batch.id),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
                 SizedBox(
                   height: 44,
                   child: ListView(
@@ -423,6 +457,7 @@ class _AttendancePageState extends State<AttendancePage> {
                           Text(family.userName, style: text.bodySmall?.copyWith(color: colors.muted)),
                           const SizedBox(height: 8),
                           for (final person in family.attendees)
+                            if (batchFilter == null || person.batchId == batchFilter)
                             _AttendanceRow(
                               name: person.name,
                               summary:
@@ -624,9 +659,12 @@ class _FeesPageState extends State<FeesPage> {
                   for (final entry in groups.entries) ...[
                     _McFeeHeader(mcId: entry.key, lines: entry.value),
                     for (final fee in entry.value) _FeeCard(
+                      listing: widget.listing,
+                      listingId: listingId,
                       fee: fee,
                       asMaster: widget.asMaster,
                       onRecord: () => record(fee),
+                      onRefresh: _load,
                     ),
                   ],
               ],
@@ -749,10 +787,20 @@ class _McFeeHeader extends StatelessWidget {
 }
 
 class _FeeCard extends StatelessWidget {
-  const _FeeCard({required this.fee, required this.asMaster, required this.onRecord});
+  const _FeeCard({
+    required this.listing,
+    required this.listingId,
+    required this.fee,
+    required this.asMaster,
+    required this.onRecord,
+    required this.onRefresh,
+  });
+  final Map<String, dynamic> listing;
+  final String listingId;
   final FeeLine fee;
   final bool asMaster;
   final VoidCallback onRecord;
+  final VoidCallback onRefresh;
 
   @override
   Widget build(BuildContext context) {
@@ -774,10 +822,32 @@ class _FeeCard extends StatelessWidget {
           _Totals(due: fee.amountDue, paid: fee.amountPaid, compact: true),
           if (fee.paidAt.isNotEmpty)
             Text('Last payment ${fee.paidAt}', style: text.bodySmall?.copyWith(color: colors.muted)),
+          if (asMaster && fee.utrStatus == 'submitted')
+            Text('UTR ${fee.utr} · claims ₹${fee.claimedAmount}'),
+          if (!asMaster)
+            UpiPayPanel(
+              listing: listing,
+              fee: fee,
+              onSubmitted: onRefresh,
+            ),
           if (asMaster && fee.pending > 0)
             Align(
               alignment: Alignment.centerRight,
-              child: TextButton(onPressed: onRecord, child: const Text('Record payment')),
+              child: TextButton(
+                onPressed: fee.utrStatus == 'submitted'
+                    ? () async {
+                        final next = (fee.amountPaid + (fee.claimedAmount == 0 ? fee.pending : fee.claimedAmount))
+                            .clamp(0, fee.amountDue);
+                        await ClassRosterStore.instance.recordPayment(
+                          listingId: listingId,
+                          fee: fee,
+                          amountPaid: next,
+                        );
+                        onRefresh();
+                      }
+                    : onRecord,
+                child: Text(fee.utrStatus == 'submitted' ? 'Verify and mark paid' : 'Record payment'),
+              ),
             ),
         ],
       ),

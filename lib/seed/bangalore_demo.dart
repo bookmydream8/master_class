@@ -88,6 +88,7 @@ List<Map<String, dynamic>> bangaloreDemoListings() {
       _ => 'competition',
     };
     final photo = _photos[spec.categoryId]![index % _photos[spec.categoryId]!.length];
+    final spoken = _spokenLanguage(spec);
     listings.add({
       'id': 'demo_${spec.format}_$index',
       'type': format,
@@ -101,6 +102,9 @@ List<Map<String, dynamic>> bangaloreDemoListings() {
       'creatorId': 'demo_$slug',
       'city': 'Bangalore',
       if (spec.area.isNotEmpty) 'area': spec.area,
+      ..._placePoint(spec),
+      if (spoken != null) 'spoken_languages': [spoken],
+      'upi_id': '$slug@oksbi',
       'price': spec.price,
       if (spec.price == 0 || spec.demo) 'is_free': true,
       if (spec.price == 0 || spec.demo) 'priceType': 'free',
@@ -118,6 +122,61 @@ List<Map<String, dynamic>> bangaloreDemoListings() {
     });
   }
   return listings;
+}
+
+const speakLanguages = <String>[
+  'English',
+  'Hindi',
+  'Kannada',
+  'Tamil',
+  'Telugu',
+  'Malayalam',
+  'French',
+  'German',
+  'Spanish',
+  'Japanese',
+  'Korean',
+];
+
+String? _spokenLanguage(_Spec spec) {
+  final haystack = '${spec.subcategory} ${spec.title}'.toLowerCase();
+  for (final language in speakLanguages) {
+    if (haystack.contains(language.toLowerCase())) return language;
+  }
+  return null;
+}
+
+bool listingMatchesLanguage(Map<String, dynamic> data, String language) {
+  final needle = language.toLowerCase();
+  final spoken = data['spoken_languages'];
+  if (spoken is List &&
+      spoken.any((item) => item.toString().toLowerCase() == needle)) {
+    return true;
+  }
+  final haystack = '${data['title'] ?? ''} ${data['subcategory'] ?? ''}'.toLowerCase();
+  return haystack.contains(needle);
+}
+
+const _areaPoints = <String, (double, double)>{
+  'Indiranagar': (12.9784, 77.6408),
+  'Koramangala': (12.9352, 77.6245),
+  'HSR Layout': (12.9121, 77.6446),
+  'Jayanagar': (12.9308, 77.5838),
+  'Whitefield': (12.9698, 77.7499),
+  'Malleswaram': (13.0035, 77.5647),
+  'Hebbal': (13.0358, 77.5970),
+  'JP Nagar': (12.9063, 77.5857),
+  'Bellandur': (12.9260, 77.6762),
+  'Banashankari': (12.9255, 77.5468),
+  'Cubbon Park': (12.9763, 77.5929),
+};
+
+Map<String, double> _placePoint(_Spec spec) {
+  if (spec.format != 'physical' && spec.format != 'event' && spec.area.isEmpty) {
+    return const {};
+  }
+  final point = _areaPoints[spec.area] ?? (12.9716, 77.5946);
+  return {'lat': point.$1, 'lng': point.$2};
 }
 
 String _date(DateTime value) =>
@@ -346,4 +405,12 @@ const _specs = <_Spec>[
   _Spec(format: 'event', categoryId: 'yoga', subcategory: 'Hatha Yoga', title: 'Sunrise yoga, Cubbon', educator: 'Lakshmi Bhat', price: 0, area: 'Cubbon Park', rating: 4.9, enrolled: 88, postedDaysAgo: 0, startsInDays: 2, blurb: 'A free outdoor hour. Bring a mat if you have one.'),
   _Spec(format: 'event', categoryId: 'arts', subcategory: 'Photography', title: 'Photo walk, Jayanagar', educator: 'Nikhil Thomas', price: 200, area: 'Jayanagar', rating: 4.6, enrolled: 31, postedDaysAgo: 3, startsInDays: 6, blurb: 'Meet at the circle, walk, and look at five frames.'),
   _Spec(format: 'event', categoryId: 'workshop', subcategory: 'Career workshop', title: 'Open house for new learners', educator: 'Megha Reddy', price: 0, area: 'Koramangala', rating: 4.5, enrolled: 40, postedDaysAgo: 2, startsInDays: 8, blurb: 'Meet masters, see rooms, and ask what a first month looks like.'),
+
+  // Extra spoken-language classes so every Home language chip has something to open.
+  _Spec(format: 'online', categoryId: 'language', subcategory: 'English', title: 'Spoken English for work', educator: 'Anita Deshpande', price: 700, area: '', rating: 4.7, enrolled: 210, postedDaysAgo: 1, startsInDays: 3, blurb: 'Meetings, small talk, and clearer emails. Online, small batch.'),
+  _Spec(format: 'physical', categoryId: 'language', subcategory: 'English', title: 'English speaking circle, Indiranagar', educator: 'Anita Deshpande', price: 650, area: 'Indiranagar', rating: 4.6, enrolled: 48, postedDaysAgo: 2, startsInDays: 4, blurb: 'An hour of conversation in a cafe room off 100 Feet Road.'),
+  _Spec(format: 'online', categoryId: 'language', subcategory: 'Telugu', title: 'Telugu for everyday life', educator: 'Lakshmi Iyer', price: 600, area: '', rating: 4.8, enrolled: 96, postedDaysAgo: 3, startsInDays: 5, blurb: 'Home, market, and family phrases. Built for Bangalore.'),
+  _Spec(format: 'physical', categoryId: 'language', subcategory: 'Telugu', title: 'Telugu reading room, Jayanagar', educator: 'Lakshmi Iyer', price: 500, area: 'Jayanagar', rating: 4.5, enrolled: 27, postedDaysAgo: 4, startsInDays: 6, blurb: 'Read a short story aloud. Helpful if you understand but hesitate to speak.'),
+  _Spec(format: 'online', categoryId: 'language', subcategory: 'Malayalam', title: 'Malayalam conversation hour', educator: 'Kavitha Nair', price: 650, area: '', rating: 4.6, enrolled: 73, postedDaysAgo: 2, startsInDays: 2, blurb: 'Greetings, food, and the phrases you hear at home.'),
+  _Spec(format: 'physical', categoryId: 'language', subcategory: 'Tamil', title: 'Tamil speaking lab, Koramangala', educator: 'Kavitha Nair', price: 550, area: 'Koramangala', rating: 4.7, enrolled: 39, postedDaysAgo: 1, startsInDays: 3, blurb: 'Speak Tamil for an hour. A whiteboard, not a textbook.'),
 ];

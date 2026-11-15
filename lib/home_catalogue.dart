@@ -7,6 +7,7 @@ import 'category_style.dart';
 import 'firestore_database.dart';
 import 'madhura_board.dart' as board;
 import 'seed/bangalore_demo.dart';
+import 'wishlist.dart';
 
 /// Image-led class card used on Home rails and the Classes list.
 class CourseCard extends StatelessWidget {
@@ -77,6 +78,11 @@ class CourseCard extends StatelessWidget {
                     left: 10,
                     top: 10,
                     child: _Pill(label: categoryName, background: tint, foreground: ink),
+                  ),
+                  Positioned(
+                    right: 8,
+                    top: 8,
+                    child: WishlistButton(listing: data),
                   ),
                   Positioned(
                     right: 10,

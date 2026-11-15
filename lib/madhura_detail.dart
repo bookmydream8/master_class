@@ -8,9 +8,14 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'admin_moderation.dart';
 import 'app_theme.dart';
+import 'class_announcements.dart';
+import 'class_batches.dart';
+import 'class_reminders.dart';
+import 'class_reviews.dart';
 import 'class_roster.dart';
 import 'class_roster_pages.dart';
 import 'firestore_database.dart';
+import 'learner_badges.dart';
 import 'madhura_board.dart' as board;
 
 void showMasterClassDetails(BuildContext context, Map<String, dynamic> data) {
@@ -211,6 +216,17 @@ class MasterClassDetailPage extends StatelessWidget {
                   _Section('LISTING EXPIRES', expiryDate),
                 if (classSupportsRoster(format)) ...[
                   const SizedBox(height: 4),
+                  CertificateButton(listing: data),
+                  AnnouncementsSection(listing: data, asMaster: isOwner),
+                  if (isOwner)
+                    OutlinedButton.icon(
+                      onPressed: () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => BatchesPage(listing: data)),
+                      ),
+                      icon: const Icon(Icons.groups_outlined),
+                      label: const Text('Batches'),
+                    ),
+                  if (isOwner) const SizedBox(height: 8),
                   FilledButton.icon(
                     onPressed: () => openEnrolment(context, data),
                     icon: const Icon(Icons.group_add_outlined),
@@ -236,9 +252,11 @@ class MasterClassDetailPage extends StatelessWidget {
                     ClassInterestCount(listingId: listingId),
                     _OwnerInterestList(listingId: listingId),
                   ] else
-                    _ClassInterestPanel(listingId: listingId, title: title),
+                    _ClassInterestPanel(listingId: listingId, title: title, listing: data),
                   const SizedBox(height: 13),
                 ],
+                ClassReviewsSection(listing: data),
+                const SizedBox(height: 16),
                 if (map.isNotEmpty)
                   Container(
                     padding: const EdgeInsets.all(15),
@@ -396,9 +414,10 @@ class ClassInterestCount extends StatelessWidget {
 }
 
 class _ClassInterestPanel extends StatefulWidget {
-  const _ClassInterestPanel({required this.listingId, required this.title});
+  const _ClassInterestPanel({required this.listingId, required this.title, this.listing});
   final String listingId;
   final String title;
+  final Map<String, dynamic>? listing;
 
   @override
   State<_ClassInterestPanel> createState() => _ClassInterestPanelState();
@@ -439,6 +458,7 @@ class _ClassInterestPanelState extends State<_ClassInterestPanel> {
     try {
       if (currentStatus == 'interested') {
         await ref.delete();
+        await cancelClassReminders(widget.listingId);
       } else {
         await ref.set({
           'listingId': widget.listingId,
@@ -450,6 +470,9 @@ class _ClassInterestPanelState extends State<_ClassInterestPanel> {
           'status': 'interested',
           'createdAt': DateTime.now().toUtc().toIso8601String(),
         });
+        if (widget.listing != null) {
+          await scheduleClassReminders(widget.listing!);
+        }
       }
     } on FirebaseException catch (e) {
       if (mounted) setState(() => error = e.message ?? e.code);

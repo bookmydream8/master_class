@@ -11,6 +11,10 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_theme.dart';
 import 'home_catalogue.dart';
+import 'language_section.dart';
+import 'nearby_map.dart';
+import 'notification_inbox.dart';
+import 'wishlist.dart';
 import 'member_id.dart';
 import 'master_class_app.dart' show showPostSheet;
 import 'seed/bangalore_demo.dart';
@@ -245,7 +249,7 @@ class MasterClassBoard extends StatefulWidget {
 
 class _MasterClassBoardState extends State<MasterClassBoard> {
   final search = TextEditingController();
-  String? category, focus;
+  String? category, focus, spokenLanguage;
   bool freeOnly = false;
   String? _browseFormat;
   String city = '';
@@ -289,6 +293,7 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
     }
     _loadPreferredCity();
     _refreshMemberId();
+    WishlistStore.instance.load();
     _authSub = FirebaseAuth.instance.authStateChanges().listen((user) {
       if (!mounted) return;
       if (user != null && !user.isAnonymous) _loadPreferredCity();
@@ -530,6 +535,9 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
         !words.contains(focus!.toLowerCase())) {
       return false;
     }
+    if (spokenLanguage != null && !listingMatchesLanguage(d, spokenLanguage!)) {
+      return false;
+    }
     final format = listingFormat(d);
     if (format == 'class_request') return false;
     if (!selectedFormats.contains(format)) return false;
@@ -585,7 +593,9 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
     final usingDemo = _listingDocs.isEmpty;
     final colors = AppPalette.of(context);
     final text = Theme.of(context).textTheme;
-    final heading = category == null
+    final heading = spokenLanguage != null
+        ? 'Speak $spokenLanguage'
+        : category == null
         ? selectedFormats.contains('competition')
               ? 'Competitions'
               : selectedFormats.contains('event')
@@ -918,6 +928,13 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
                 ],
               ),
             ),
+            IconButton(
+              tooltip: 'Notifications',
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const NotificationInboxPage()),
+              ),
+              icon: Icon(Icons.notifications_none, color: colors.ink),
+            ),
             Semantics(
               button: true,
               label: 'Open profile',
@@ -954,7 +971,17 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
         const SizedBox(height: 16),
         PromoCarousel(onOpen: _openBrowse),
         const SizedBox(height: 22),
+        LanguageSection(listings: _homeCatalogue(), onOpen: _openLanguage),
+        const SizedBox(height: 22),
         LearnYourWay(listings: _homeCatalogue(), onOpen: _openBrowse),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: _openMap,
+            icon: const Icon(Icons.map_outlined),
+            label: const Text('Physical classes on a map'),
+          ),
+        ),
         const SizedBox(height: 22),
         DemoClassesSoon(
           listings: _homeCatalogue(),
@@ -1049,6 +1076,32 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
     );
   }
 
+  void _openLanguage(String language) {
+    _selectFormats({'online', 'physical'});
+    setState(() {
+      _browseFormat = 'language';
+      _tab = 1;
+      category = null;
+      focus = null;
+      freeOnly = false;
+      search.clear();
+      spokenLanguage = language;
+    });
+    _loadListings(reset: true);
+  }
+
+  void _openMap() {
+    final listings = _homeCatalogue();
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => NearbyClassesPage(
+          listings: listings,
+          onOpen: (data) => showMasterClassDetails(context, data),
+        ),
+      ),
+    );
+  }
+
   void _selectTab(int index) {
     if (index == 1 && _browseFormat == null) {
       _openBrowse('online');
@@ -1063,6 +1116,7 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
     setState(() {
       _browseFormat = format;
       _tab = 1;
+      spokenLanguage = null;
       if (changingFormat) {
         category = focusCategory;
         focus = null;

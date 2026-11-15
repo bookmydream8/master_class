@@ -14,7 +14,12 @@ import 'package:image_picker/image_picker.dart';
 
 import 'app_theme.dart';
 import 'category_style.dart';
+import 'class_reviews.dart';
 import 'class_roster_pages.dart';
+import 'learner_badges.dart';
+import 'notification_inbox.dart';
+import 'upi_payment.dart';
+import 'wishlist.dart';
 import 'madhura_board.dart' as board;
 import 'member_id.dart';
 import 'madhura_detail.dart' show showMasterClassDetails;
@@ -333,6 +338,7 @@ class _ProfilePageState extends State<ProfilePage> {
   final expertDetails = TextEditingController();
   final phoneField = TextEditingController();
   final cityField = TextEditingController();
+  final upiField = TextEditingController();
   final topicInterests = <String>{};
   String profileCity = '';
   String profilePhone = '';
@@ -361,6 +367,7 @@ class _ProfilePageState extends State<ProfilePage> {
     expertDetails.dispose();
     phoneField.dispose();
     cityField.dispose();
+    upiField.dispose();
     super.dispose();
   }
 
@@ -378,6 +385,7 @@ class _ProfilePageState extends State<ProfilePage> {
         ..clear()
         ..addAll(['Music', 'Yoga']);
       role = 'Learner';
+      upiField.text = 'anita.deshpande@oksbi';
       if (mounted) setState(() => loading = false);
       return;
     }
@@ -396,6 +404,7 @@ class _ProfilePageState extends State<ProfilePage> {
       if (stored.isNotEmpty) mcId = stored;
       final storedRole = (data?['role'] ?? '').toString();
       role = storedRole == 'Master' ? 'Master' : 'Learner';
+      upiField.text = (data?['upiId'] ?? '').toString();
       final rawInterests = data?['topicInterests'];
       topicInterests
         ..clear()
@@ -456,6 +465,7 @@ class _ProfilePageState extends State<ProfilePage> {
       'preferredPhysicalCity': profileCity,
       'topicInterests': topicInterests.toList(),
       'role': role,
+      'upiId': upiField.text.trim(),
       'updatedAt': FieldValue.serverTimestamp(),
     }, SetOptions(merge: true));
     unawaited(
@@ -699,6 +709,18 @@ class _ProfilePageState extends State<ProfilePage> {
                     else
                       Text(role, style: Theme.of(context).textTheme.titleSmall),
                     const SizedBox(height: 16),
+                    const _ProfileLabel('UPI ID'),
+                    if (editing)
+                      TextField(
+                        controller: upiField,
+                        decoration: _field(context, 'name@okbank'),
+                      )
+                    else
+                      Text(
+                        upiField.text.trim().isEmpty ? 'Add a UPI ID so learners can pay you.' : upiField.text.trim(),
+                        style: Theme.of(context).textTheme.bodyMedium,
+                      ),
+                    const SizedBox(height: 16),
                     const _ProfileLabel('INTERESTS'),
                     if (editing)
                       Wrap(
@@ -915,6 +937,34 @@ class _ProfilePageState extends State<ProfilePage> {
                 },
               ),
               const SizedBox(height: 14),
+              if (!editing && upiField.text.trim().isNotEmpty)
+                UpiIdCard(upiId: upiField.text.trim(), name: displayName),
+              LearnerBadgesCard(mcId: mcId),
+              MasterReviewsCard(masterId: signedIn ? user.uid : ''),
+              const _ProfileLabel('SAVED CLASSES'),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => SavedClassesPage(
+                        onOpen: (data) => showMasterClassDetails(context, data),
+                      ),
+                    ),
+                  ),
+                  icon: const Icon(Icons.favorite_border),
+                  label: const Text('Open saved classes'),
+                ),
+              ),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.notifications_none),
+                title: const Text('Notifications'),
+                subtitle: const Text('Class reminders, fees, and announcements'),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => const NotificationInboxPage()),
+                ),
+              ),
               const _ProfileLabel('ACCOUNT'),
               Card(
                 child: ListTile(

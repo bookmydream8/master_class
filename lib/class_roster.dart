@@ -8,27 +8,38 @@ class Attendee {
     required this.name,
     this.age = '',
     this.phone = '',
+    this.batchId = '',
   });
 
   final String id;
   final String name;
   final String age;
   final String phone;
+  final String batchId;
 
-  Attendee copyWith({String? name, String? age, String? phone}) => Attendee(
-    id: id,
-    name: name ?? this.name,
-    age: age ?? this.age,
-    phone: phone ?? this.phone,
-  );
+  Attendee copyWith({String? name, String? age, String? phone, String? batchId}) =>
+      Attendee(
+        id: id,
+        name: name ?? this.name,
+        age: age ?? this.age,
+        phone: phone ?? this.phone,
+        batchId: batchId ?? this.batchId,
+      );
 
-  Map<String, String> toMap() => {'id': id, 'name': name, 'age': age, 'phone': phone};
+  Map<String, String> toMap() => {
+    'id': id,
+    'name': name,
+    'age': age,
+    'phone': phone,
+    'batchId': batchId,
+  };
 
   static Attendee fromMap(Map<String, dynamic> data) => Attendee(
     id: (data['id'] ?? '').toString(),
     name: (data['name'] ?? '').toString(),
     age: (data['age'] ?? '').toString(),
     phone: (data['phone'] ?? '').toString(),
+    batchId: (data['batchId'] ?? '').toString(),
   );
 }
 
@@ -59,6 +70,9 @@ class FeeLine {
     required this.monthsBilled,
     required this.feePeriod,
     this.paidAt = '',
+    this.utr = '',
+    this.utrStatus = '',
+    this.claimedAmount = 0,
   });
 
   final String mcId;
@@ -72,12 +86,22 @@ class FeeLine {
   final int monthsBilled;
   final String feePeriod;
   final String paidAt;
+  final String utr;
+  final String utrStatus;
+  final int claimedAmount;
 
   int get pending => (amountDue - amountPaid).clamp(0, amountDue);
   bool get settled => amountDue == 0 || amountPaid >= amountDue;
   String get key => '$mcId:$attendeeId';
 
-  FeeLine copyWith({int? amountDue, int? amountPaid, String? paidAt}) => FeeLine(
+  FeeLine copyWith({
+    int? amountDue,
+    int? amountPaid,
+    String? paidAt,
+    String? utr,
+    String? utrStatus,
+    int? claimedAmount,
+  }) => FeeLine(
     mcId: mcId,
     attendeeId: attendeeId,
     attendeeName: attendeeName,
@@ -87,6 +111,9 @@ class FeeLine {
     monthsBilled: monthsBilled,
     feePeriod: feePeriod,
     paidAt: paidAt ?? this.paidAt,
+    utr: utr ?? this.utr,
+    utrStatus: utrStatus ?? this.utrStatus,
+    claimedAmount: claimedAmount ?? this.claimedAmount,
   );
 }
 
@@ -144,6 +171,12 @@ class ClassRosterStore {
 
   bool isDemo(String listingId) => listingId.startsWith('demo_');
 
+  /// In-memory rosters for demo listings. Empty until the first demo load.
+  Map<String, ClassRoster> get demoRosters {
+    _ensureDemo();
+    return _demo;
+  }
+
   Future<ClassRoster> load({
     required String listingId,
     required int feeAmount,
@@ -197,6 +230,9 @@ class ClassRosterStore {
         monthsBilled: months,
         feePeriod: period == 'course' ? 'course' : 'month',
         paidAt: (data['paidAt'] ?? '').toString(),
+        utr: (data['utr'] ?? '').toString(),
+        utrStatus: (data['utrStatus'] ?? '').toString(),
+        claimedAmount: (data['claimedAmount'] as num?)?.toInt() ?? 0,
       );
     }).toList();
     return ClassRoster(
@@ -378,7 +414,93 @@ class ClassRosterStore {
           'monthsBilled': fee.monthsBilled,
           'paidAt': paidAt,
           'feePeriod': fee.feePeriod,
+          'utr': fee.utr,
+          'utrStatus': paid >= fee.amountDue ? 'verified' : fee.utrStatus,
         }, SetOptions(merge: true));
+  }
+
+  /// Learner says they paid [claimed] via UPI and shares the UTR. The master confirms it.
+  Future<void> submitUtr({
+    required String listingId,
+    required FeeLine fee,
+    required String utr,
+    required int claimed,
+  }) async {
+    final amount = claimed.clamp(0, fee.pending);
+    if (isDemo(listingId)) {
+      _ensureDemo();
+      final current = _demo[listingId];
+      if (current == null) return;
+      _demo[listingId] = ClassRoster(
+        enrollments: current.enrollments,
+        sessionDates: current.sessionDates,
+        marks: current.marks,
+        fees: [
+          for (final item in current.fees)
+            item.key == fee.key
+                ? item.copyWith(utr: utr, utrStatus: 'submitted', claimedAmount: amount)
+                : item,
+        ],
+        feeAmount: current.feeAmount,
+        feePeriod: current.feePeriod,
+      );
+      return;
+    }
+    await firestore
+        .collection('listings')
+        .doc(listingId)
+        .collection('fees')
+        .doc('${fee.mcId}_${fee.attendeeId}')
+        .set({
+          'utr': utr,
+          'utrStatus': 'submitted',
+          'claimedAmount': amount,
+        }, SetOptions(merge: true));
+  }
+
+  Future<void> assignBatch({
+    required String listingId,
+    required String mcId,
+    required String attendeeId,
+    required String batchId,
+  }) async {
+    if (isDemo(listingId)) {
+      _ensureDemo();
+      final current = _demo[listingId];
+      if (current == null) return;
+      _demo[listingId] = ClassRoster(
+        enrollments: [
+          for (final family in current.enrollments)
+            family.mcId != mcId
+                ? family
+                : ClassEnrollment(
+                    mcId: family.mcId,
+                    userId: family.userId,
+                    userName: family.userName,
+                    attendees: [
+                      for (final person in family.attendees)
+                        person.id == attendeeId ? person.copyWith(batchId: batchId) : person,
+                    ],
+                  ),
+        ],
+        sessionDates: current.sessionDates,
+        marks: current.marks,
+        fees: current.fees,
+        feeAmount: current.feeAmount,
+        feePeriod: current.feePeriod,
+      );
+      return;
+    }
+    final ref = firestore.collection('listings').doc(listingId).collection('enrollments').doc(mcId);
+    final snap = await ref.get();
+    final attendees = (snap.data()?['attendees'] as List? ?? const [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+    for (final person in attendees) {
+      if (person['id'].toString() == attendeeId) person['batchId'] = batchId;
+    }
+    await ref.set({'attendees': attendees}, SetOptions(merge: true));
   }
 
   void _ensureDemo() {
@@ -466,7 +588,17 @@ class ClassRosterStore {
       final family = families[familyIndex];
       final attendees = [
         for (final person in family.$3)
-          Attendee(id: person.$1, name: person.$2, age: person.$3, phone: person.$4),
+          Attendee(
+            id: person.$1,
+            name: person.$2,
+            age: person.$3,
+            phone: person.$4,
+            batchId: switch (person.$1) {
+              'asha' || 'leela' => 'morning',
+              'ravi' || 'arun' => 'evening',
+              _ => '',
+            },
+          ),
       ];
       enrollments.add(
         ClassEnrollment(
@@ -501,7 +633,11 @@ class ClassRosterStore {
         );
         for (var session = 0; session < dates.length; session++) {
           final pattern = presentPattern[session % presentPattern.length];
-          marks[dates[session]]![key] = index == 1 && session == 1 ? 'absent' : pattern;
+          marks[dates[session]]![key] = attendee.id == 'asha'
+              ? 'present'
+              : index == 1 && session == 1
+              ? 'absent'
+              : pattern;
         }
       }
     }
