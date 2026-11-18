@@ -20,12 +20,12 @@ subprojects {
 }
 
 // image_cropper 9.1.0 declares compileSdk 33, but its AndroidX dependencies
-// require API 34 or newer. Keep the override in this project, not Pub cache.
+// require a newer API. Keep the override in this project, not Pub cache.
 subprojects {
     if (name == "image_cropper") {
         afterEvaluate {
             extensions.configure<com.android.build.gradle.LibraryExtension>("android") {
-                compileSdk = 36
+                compileSdk = 37
             }
         }
     }
