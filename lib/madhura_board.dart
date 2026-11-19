@@ -891,7 +891,7 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
     final colors = AppPalette.of(context);
     final text = Theme.of(context).textTheme;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 96),
+      padding: const EdgeInsets.fromLTRB(18, 12, 18, 96),
       children: [
         Row(
           children: [
@@ -899,8 +899,8 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
               borderRadius: BorderRadius.circular(14),
               child: Image.asset(
                 'logo.png',
-                width: 44,
-                height: 44,
+                width: 40,
+                height: 40,
                 fit: BoxFit.cover,
               ),
             ),
@@ -958,7 +958,7 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
             ),
           ],
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 16),
         Semantics(
           button: true,
           label: 'Search classes',
@@ -973,7 +973,7 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
         ),
         const SizedBox(height: 16),
         PromoCarousel(onOpen: _openBrowse),
-        const SizedBox(height: 22),
+        const SizedBox(height: 18),
         LearnYourWay(listings: _homeCatalogue(), onOpen: _openBrowse),
         Align(
           alignment: Alignment.centerLeft,

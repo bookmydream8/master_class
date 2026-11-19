@@ -49,7 +49,7 @@ class CourseCard extends StatelessWidget {
       color: colors.card,
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(22),
+        borderRadius: BorderRadius.circular(20),
         side: BorderSide(color: colors.line),
       ),
       clipBehavior: Clip.antiAlias,
@@ -59,7 +59,7 @@ class CourseCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             SizedBox(
-              height: width == null ? 176 : 138,
+              height: width == null ? 188 : 142,
               width: double.infinity,
               child: Stack(
                 fit: StackFit.expand,
@@ -85,8 +85,8 @@ class CourseCard extends StatelessWidget {
                     child: WishlistButton(listing: data),
                   ),
                   Positioned(
-                    right: 10,
-                    top: 10,
+                    left: 10,
+                    top: 42,
                     child: _Pill(
                       label: price,
                       background: colors.card,
@@ -131,7 +131,7 @@ class CourseCard extends StatelessWidget {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

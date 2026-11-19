@@ -48,21 +48,21 @@ class AppPalette extends ThemeExtension<AppPalette> {
       Theme.of(context).extension<AppPalette>()!;
 
   static const light = AppPalette(
-    canvas: Color(0xFFF4F7F7),
+    canvas: Color(0xFFF7F8F5),
     card: Color(0xFFFFFFFF),
-    ink: Color(0xFF1C2426),
-    muted: Color(0xFF5C6A6E),
-    line: Color(0xFFE1E7E8),
-    accent: Color(0xFF1A6B73),
+    ink: Color(0xFF202923),
+    muted: Color(0xFF626D66),
+    line: Color(0xFFE5E9E2),
+    accent: Color(0xFF235B4D),
     onAccent: Color(0xFFFFFFFF),
-    accentSoft: Color(0xFFE5F4F5),
-    onAccentSoft: Color(0xFF0E4A52),
-    onlineWell: Color(0xFFE5F4F5),
-    physicalWell: Color(0xFFE7F2EA),
-    competitionWell: Color(0xFFF3F1E8),
-    eventWell: Color(0xFFE8EEF6),
-    wellInk: Color(0xFF1A4A52),
-    imageFallback: Color(0xFFE7F1F2),
+    accentSoft: Color(0xFFE8F1EC),
+    onAccentSoft: Color(0xFF194738),
+    onlineWell: Color(0xFFE8F1EC),
+    physicalWell: Color(0xFFEAF0E7),
+    competitionWell: Color(0xFFF5F0E4),
+    eventWell: Color(0xFFEBEFF4),
+    wellInk: Color(0xFF244B3E),
+    imageFallback: Color(0xFFE8EEE8),
     shadow: Color(0x14182428),
   );
 
@@ -135,7 +135,7 @@ class AppTheme {
   static ThemeData _build() {
     const palette = AppPalette.light;
     final scheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF1A6B73),
+      seedColor: const Color(0xFF235B4D),
       brightness: Brightness.light,
       dynamicSchemeVariant: DynamicSchemeVariant.fidelity,
       primary: palette.accent,
@@ -173,7 +173,7 @@ class AppTheme {
       palette.ink,
       palette.muted,
     );
-    final radius = BorderRadius.circular(16);
+    final radius = BorderRadius.circular(14);
     final outline = OutlineInputBorder(
       borderRadius: radius,
       borderSide: BorderSide(color: palette.line),
@@ -187,7 +187,7 @@ class AppTheme {
       canvasColor: palette.canvas,
       dividerColor: palette.line,
       splashFactory: InkRipple.splashFactory,
-      visualDensity: VisualDensity.standard,
+      visualDensity: VisualDensity.compact,
       extensions: [palette],
       textTheme: text,
       appBarTheme: AppBarTheme(
@@ -249,8 +249,8 @@ class AppTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          minimumSize: const Size(64, 48),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+          minimumSize: const Size(64, 46),
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
           textStyle: text.labelLarge,
           backgroundColor: scheme.primary,
@@ -286,7 +286,7 @@ class AppTheme {
         hintStyle: text.bodyMedium?.copyWith(color: palette.muted),
         labelStyle: text.bodyMedium?.copyWith(color: palette.muted),
         helperStyle: text.bodySmall?.copyWith(color: palette.muted),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
         border: outline,
         enabledBorder: outline,
         focusedBorder: OutlineInputBorder(
@@ -351,7 +351,7 @@ class AppTheme {
       ),
       segmentedButtonTheme: SegmentedButtonThemeData(
         style: ButtonStyle(
-          visualDensity: VisualDensity.standard,
+          visualDensity: VisualDensity.compact,
           textStyle: WidgetStatePropertyAll(text.labelLarge),
         ),
       ),
@@ -368,31 +368,31 @@ class AppTheme {
         style?.copyWith(color: color);
     return headings.copyWith(
       displaySmall: paint(headings.displaySmall, ink)?.copyWith(
-        fontSize: 32,
-        height: 1.15,
+        fontSize: 28,
+        height: 1.16,
         fontWeight: FontWeight.w700,
         letterSpacing: -0.4,
       ),
       headlineMedium: paint(headings.headlineMedium, ink)?.copyWith(
-        fontSize: 26,
+        fontSize: 22,
         height: 1.2,
         fontWeight: FontWeight.w700,
         letterSpacing: -0.3,
       ),
       headlineSmall: paint(headings.headlineSmall, ink)?.copyWith(
-        fontSize: 22,
-        height: 1.2,
+        fontSize: 19,
+        height: 1.22,
         fontWeight: FontWeight.w700,
         letterSpacing: -0.2,
       ),
       titleLarge: paint(headings.titleLarge, ink)?.copyWith(
-        fontSize: 20,
-        height: 1.25,
+        fontSize: 17,
+        height: 1.28,
         fontWeight: FontWeight.w700,
       ),
       titleMedium: paint(headings.titleMedium, ink)?.copyWith(
-        fontSize: 16,
-        height: 1.3,
+        fontSize: 15,
+        height: 1.35,
         fontWeight: FontWeight.w700,
       ),
       titleSmall: paint(headings.titleSmall, ink)?.copyWith(
@@ -401,7 +401,7 @@ class AppTheme {
         fontWeight: FontWeight.w700,
       ),
       bodyLarge: paint(body.bodyLarge, ink)?.copyWith(
-        fontSize: 16,
+        fontSize: 15,
         height: 1.5,
         fontWeight: FontWeight.w400,
       ),
@@ -411,8 +411,8 @@ class AppTheme {
         fontWeight: FontWeight.w400,
       ),
       bodySmall: paint(body.bodySmall, muted)?.copyWith(
-        fontSize: 13,
-        height: 1.4,
+        fontSize: 12,
+        height: 1.45,
         fontWeight: FontWeight.w400,
       ),
       labelLarge: paint(headings.labelLarge, ink)?.copyWith(
@@ -427,10 +427,10 @@ class AppTheme {
         fontWeight: FontWeight.w600,
       ),
       labelSmall: paint(headings.labelSmall, muted)?.copyWith(
-        fontSize: 12,
-        height: 1.2,
+        fontSize: 11,
+        height: 1.25,
         fontWeight: FontWeight.w600,
-        letterSpacing: 0.4,
+        letterSpacing: 0.35,
       ),
     );
   }
