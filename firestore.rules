@@ -223,6 +223,26 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/academies/$(academyId)).data.ownerId == request.auth.uid;
     }
 
+    function acceptedTeacherInvite(academyId) {
+      return (
+          request.auth.token.email is string
+          && exists(/databases/$(database)/documents/academyInvitesByEmail/$(request.auth.token.email)/items/$(academyId))
+          && get(/databases/$(database)/documents/academyInvitesByEmail/$(request.auth.token.email)/items/$(academyId)).data.teacherUid == request.auth.uid
+        )
+        || (
+          hasProfile()
+          && validMcId(myMcId())
+          && exists(/databases/$(database)/documents/academyInvitesByMc/$(myMcId())/items/$(academyId))
+          && get(/databases/$(database)/documents/academyInvitesByMc/$(myMcId())/items/$(academyId)).data.teacherUid == request.auth.uid
+        )
+        || (
+          hasProfile()
+          && myPhone().size() >= 5
+          && exists(/databases/$(database)/documents/academyInvitesByPhone/$(myPhone())/items/$(academyId))
+          && get(/databases/$(database)/documents/academyInvitesByPhone/$(myPhone())/items/$(academyId)).data.teacherUid == request.auth.uid
+        );
+    }
+
     function isAcademyTeacher(academyId) {
       return signedIn()
         && exists(/databases/$(database)/documents/academies/$(academyId)/teachers/$(request.auth.uid));
@@ -489,9 +509,7 @@ service cloud.firestore {
             isOwner(teacherUid)
             && request.resource.data.userId == request.auth.uid
             && request.resource.data.status == 'active'
-            && request.auth.token.email is string
-            && exists(/databases/$(database)/documents/academyInvitesByEmail/$(request.auth.token.email)/items/$(academyId))
-            && get(/databases/$(database)/documents/academyInvitesByEmail/$(request.auth.token.email)/items/$(academyId)).data.teacherUid == request.auth.uid
+            && acceptedTeacherInvite(academyId)
           );
         allow update: if isAcademyOwner(academyId)
           || (

@@ -885,21 +885,80 @@ class TeacherAcademyView extends StatelessWidget {
   }
 }
 
-class AcademyInvitesSection extends StatelessWidget {
+class AcademyInvitesSection extends StatefulWidget {
   const AcademyInvitesSection({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  State<AcademyInvitesSection> createState() => _AcademyInvitesSectionState();
+}
+
+class _AcademyInvitesSectionState extends State<AcademyInvitesSection> {
+  String email = '';
+  String mcId = '';
+  String phone = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadKeys();
+  }
+
+  Future<void> _loadKeys() async {
     final user = FirebaseAuth.instance.currentUser;
-    if (user == null || user.isAnonymous) return const SizedBox.shrink();
-    final email = (user.email ?? '').trim().toLowerCase();
-    if (email.isEmpty) return const SizedBox.shrink();
+    if (user == null || user.isAnonymous) return;
+    email = (user.email ?? '').trim().toLowerCase();
+    try {
+      final data = (await firestore.collection('profiles').doc(user.uid).get())
+          .data();
+      mcId = (data?['mcId'] ?? '').toString().trim();
+      phone = (data?['phoneNumber'] ?? '').toString().trim();
+    } catch (_) {}
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (email.isNotEmpty)
+          _InviteInbox(
+            stream: firestore
+                .collection('academyInvitesByEmail')
+                .doc(email)
+                .collection('items')
+                .snapshots(),
+          ),
+        if (mcId.isNotEmpty)
+          _InviteInbox(
+            stream: firestore
+                .collection('academyInvitesByMc')
+                .doc(mcId)
+                .collection('items')
+                .snapshots(),
+          ),
+        if (phone.isNotEmpty)
+          _InviteInbox(
+            stream: firestore
+                .collection('academyInvitesByPhone')
+                .doc(phone)
+                .collection('items')
+                .snapshots(),
+          ),
+      ],
+    );
+  }
+}
+
+class _InviteInbox extends StatelessWidget {
+  const _InviteInbox({required this.stream});
+
+  final Stream<QuerySnapshot<Map<String, dynamic>>> stream;
+
+  @override
+  Widget build(BuildContext context) {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
-      stream: firestore
-          .collection('academyInvitesByEmail')
-          .doc(email)
-          .collection('items')
-          .snapshots(),
+      stream: stream,
       builder: (context, snapshot) {
         final docs = (snapshot.data?.docs ?? [])
             .where((doc) => doc.data()['status'] == 'invited')
