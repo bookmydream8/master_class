@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'app_theme.dart';
 import 'category_style.dart';
+import 'home_illustrations.dart';
 import 'seed/bangalore_demo.dart';
 
 class _LanguageCard {
@@ -27,7 +28,11 @@ const _languageCards = <_LanguageCard>[
 
 /// Compact language rail. Light cards with a thin border, not gradient tiles.
 class LanguageSection extends StatelessWidget {
-  const LanguageSection({super.key, required this.onOpen, required this.listings});
+  const LanguageSection({
+    super.key,
+    required this.onOpen,
+    required this.listings,
+  });
 
   final ValueChanged<String> onOpen;
   final List<Map<String, dynamic>> listings;
@@ -39,7 +44,13 @@ class LanguageSection extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('Learn to speak a language', style: text.titleLarge),
+        Row(
+          children: [
+            const HomeIllustration('languages', size: 36),
+            const SizedBox(width: 8),
+            Text('Learn to speak a language', style: text.titleLarge),
+          ],
+        ),
         const SizedBox(height: 4),
         Text(
           'The class people ask for most',
@@ -77,10 +88,9 @@ class LanguageSection extends StatelessWidget {
                       padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
                       child: Row(
                         children: [
-                          Icon(
-                            Icons.record_voice_over_outlined,
-                            color: style.ink,
-                            size: 18,
+                          HomeIllustration(
+                            languageIllustration(card.english),
+                            size: 32,
                           ),
                           const SizedBox(width: 8),
                           Expanded(
@@ -92,7 +102,9 @@ class LanguageSection extends StatelessWidget {
                                   card.native,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: text.titleSmall?.copyWith(color: style.ink),
+                                  style: text.titleSmall?.copyWith(
+                                    color: style.ink,
+                                  ),
                                 ),
                                 Text(
                                   card.english == card.native
@@ -100,11 +112,15 @@ class LanguageSection extends StatelessWidget {
                                       : card.english,
                                   maxLines: 1,
                                   overflow: TextOverflow.ellipsis,
-                                  style: text.bodySmall?.copyWith(color: colors.muted),
+                                  style: text.bodySmall?.copyWith(
+                                    color: colors.muted,
+                                  ),
                                 ),
                                 Text(
                                   'Beginner',
-                                  style: text.labelSmall?.copyWith(color: style.ink),
+                                  style: text.labelSmall?.copyWith(
+                                    color: style.ink,
+                                  ),
                                 ),
                               ],
                             ),

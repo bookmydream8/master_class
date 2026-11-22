@@ -101,7 +101,7 @@ service cloud.firestore {
         && data.title.size() <= 120
         && data.body is string
         && data.body.size() <= 1000
-        && data.kind in ['class_reminder', 'fee_due', 'announcement']
+        && data.kind in ['class_reminder', 'fee_due', 'announcement', 'listing_expiry']
         && data.read == false
         && data.createdAt is timestamp;
     }
@@ -175,19 +175,78 @@ service cloud.firestore {
       }
     }
 
+    function nearNow(value) {
+      return value is timestamp
+        && value >= request.time - duration.value(10, 'm')
+        && value <= request.time + duration.value(10, 'm');
+    }
+
+    function isOnlineListing(data) {
+      return data.get('listing_type', '') == 'online'
+        || data.get('type', '') == 'online_class';
+    }
+
+    // Online posts expire within 31 days of postedAt, or of renewedAt when renewed.
+    function expiryWithinCap() {
+      let data = request.resource.data;
+      return !isOnlineListing(data)
+        || !data.keys().hasAny(['expires_at'])
+        || (
+          data.expires_at is timestamp
+          && (
+            (
+              data.keys().hasAny(['renewedAt'])
+              && data.renewedAt is timestamp
+              && nearNow(data.renewedAt)
+              && data.expires_at > data.renewedAt
+              && data.expires_at <= data.renewedAt + duration.value(31, 'd')
+            )
+            || (
+              !data.keys().hasAny(['renewedAt'])
+              && data.postedAt is timestamp
+              && data.expires_at > data.postedAt
+              && data.expires_at <= data.postedAt + duration.value(31, 'd')
+              && (
+                resource == null
+                || !data.keys().hasAny(['postedAt'])
+                || !('postedAt' in resource.data)
+                || resource.data.postedAt == data.postedAt
+                || nearNow(data.postedAt)
+              )
+            )
+          )
+        );
+    }
+
+    function isAcademyOwner(academyId) {
+      return signedIn()
+        && get(/databases/$(database)/documents/academies/$(academyId)).data.ownerId == request.auth.uid;
+    }
+
+    function isAcademyTeacher(academyId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/academies/$(academyId)/teachers/$(request.auth.uid));
+    }
+
+    function myPhone() {
+      return get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.get('phoneNumber', '');
+    }
+
     match /listings/{listingId} {
       allow read: if true;
       allow create: if signedIn()
         && request.resource.data.creatorId == request.auth.uid
         && request.resource.data.title is string
         && request.resource.data.title.size() > 0
-        && request.resource.data.title.size() <= 200;
+        && request.resource.data.title.size() <= 200
+        && expiryWithinCap();
       allow update: if signedIn()
         && resource.data.creatorId == request.auth.uid
         && request.resource.data.creatorId == resource.data.creatorId
         && request.resource.data.title is string
         && request.resource.data.title.size() > 0
-        && request.resource.data.title.size() <= 200;
+        && request.resource.data.title.size() <= 200
+        && expiryWithinCap();
       allow delete: if isAdmin()
         || (signedIn() && resource.data.creatorId == request.auth.uid);
 
@@ -411,6 +470,139 @@ service cloud.firestore {
         && request.resource.data.status in ['interested', 'master_ready', 'vote_0']
         && registrationAgrees();
       allow delete: if signedIn() && (isOwner(userId) || isMaster(listingId));
+    }
+
+    match /academies/{academyId} {
+      allow get: if isAcademyOwner(academyId) || isAcademyTeacher(academyId);
+      allow list: if signedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if signedIn()
+        && request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.name is string
+        && request.resource.data.name.size() > 0
+        && request.resource.data.name.size() <= 120;
+      allow update, delete: if isAcademyOwner(academyId);
+
+      match /teachers/{teacherUid} {
+        allow read: if isAcademyOwner(academyId) || isOwner(teacherUid);
+        allow create: if isAcademyOwner(academyId)
+          || (
+            isOwner(teacherUid)
+            && request.resource.data.userId == request.auth.uid
+            && request.resource.data.status == 'active'
+            && request.auth.token.email is string
+            && exists(/databases/$(database)/documents/academyInvitesByEmail/$(request.auth.token.email)/items/$(academyId))
+            && get(/databases/$(database)/documents/academyInvitesByEmail/$(request.auth.token.email)/items/$(academyId)).data.teacherUid == request.auth.uid
+          );
+        allow update: if isAcademyOwner(academyId)
+          || (
+            isOwner(teacherUid)
+            && request.resource.data.salaryAmount == resource.data.salaryAmount
+          );
+        allow delete: if isAcademyOwner(academyId);
+      }
+
+      match /batches/{batchId} {
+        allow read: if isAcademyOwner(academyId)
+          || resource.data.teacherUid == request.auth.uid;
+        allow create, update, delete: if isAcademyOwner(academyId);
+      }
+
+      match /students/{studentId} {
+        allow get: if isAcademyOwner(academyId)
+          || isAcademyTeacher(academyId)
+          || (signedIn() && validMcId(myMcId()) && studentId == myMcId())
+          || (signedIn() && resource.data.userId == request.auth.uid);
+        allow list: if isAcademyOwner(academyId)
+          || (isAcademyTeacher(academyId) && resource.data.batchTeacherUid == request.auth.uid);
+        allow create, update, delete: if isAcademyOwner(academyId);
+      }
+
+      match /salaries/{salaryId} {
+        allow read: if isAcademyOwner(academyId)
+          || resource.data.teacherUid == request.auth.uid;
+        allow create, update: if isAcademyOwner(academyId);
+        allow delete: if false;
+      }
+
+      match /attendance/{recordId} {
+        allow read: if isAcademyOwner(academyId) || resource.data.teacherUid == request.auth.uid;
+        allow create, update: if signedIn()
+          && request.resource.data.authorId == request.auth.uid
+          && request.resource.data.teacherUid == request.auth.uid
+          && request.resource.data.batchId is string
+          && get(/databases/$(database)/documents/academies/$(academyId)/batches/$(request.resource.data.batchId)).data.teacherUid == request.auth.uid;
+        allow delete: if false;
+      }
+
+      match /announcements/{announcementId} {
+        allow read: if isAcademyOwner(academyId) || isAcademyTeacher(academyId);
+        allow create: if signedIn()
+          && request.resource.data.authorId == request.auth.uid
+          && request.resource.data.teacherUid == request.auth.uid
+          && request.resource.data.batchId is string
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 120
+          && request.resource.data.body is string
+          && request.resource.data.body.size() <= 2000
+          && get(/databases/$(database)/documents/academies/$(academyId)/batches/$(request.resource.data.batchId)).data.teacherUid == request.auth.uid;
+        allow update, delete: if false;
+      }
+
+      match /invites/{inviteId} {
+        allow read, create, update, delete: if isAcademyOwner(academyId);
+      }
+    }
+
+    function invitePayloadOk(academyId) {
+      return request.resource.data.ownerId == request.auth.uid
+        && request.resource.data.academyId == academyId
+        && request.resource.data.status == 'invited'
+        && request.resource.data.academyName is string;
+    }
+
+    match /academyInvitesByEmail/{email}/items/{academyId} {
+      allow read: if signedIn() && email == request.auth.token.email;
+      allow create: if signedIn() && invitePayloadOk(academyId);
+      allow update: if signedIn() && (
+        resource.data.ownerId == request.auth.uid
+        || (
+          email == request.auth.token.email
+          && request.resource.data.status == 'accepted'
+          && request.resource.data.teacherUid == request.auth.uid
+          && request.resource.data.ownerId == resource.data.ownerId
+        )
+      );
+      allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
+    }
+
+    match /academyInvitesByMc/{mcId}/items/{academyId} {
+      allow read: if signedIn() && validMcId(myMcId()) && mcId == myMcId();
+      allow create: if signedIn() && invitePayloadOk(academyId);
+      allow update: if signedIn() && (
+        resource.data.ownerId == request.auth.uid
+        || (
+          validMcId(myMcId())
+          && mcId == myMcId()
+          && request.resource.data.status == 'accepted'
+          && request.resource.data.teacherUid == request.auth.uid
+        )
+      );
+      allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
+    }
+
+    match /academyInvitesByPhone/{phone}/items/{academyId} {
+      allow read: if signedIn() && myPhone() == phone && phone.size() >= 5;
+      allow create: if signedIn() && invitePayloadOk(academyId);
+      allow update: if signedIn() && (
+        resource.data.ownerId == request.auth.uid
+        || (
+          myPhone() == phone
+          && request.resource.data.status == 'accepted'
+          && request.resource.data.teacherUid == request.auth.uid
+        )
+      );
+      allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
     }
 
     match /{document=**} {

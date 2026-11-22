@@ -182,3 +182,41 @@ Future<void> _swapTopic(
     await prefs.setString(key, next);
   }
 }
+
+Future<void> scheduleListingExpiryReminder({
+  required String listingId,
+  required String title,
+  required DateTime expiresAt,
+}) async {
+  if (!_ready) await initClassReminders();
+  final when = expiresAt.subtract(const Duration(days: 1));
+  final day =
+      '${expiresAt.year}-${expiresAt.month.toString().padLeft(2, '0')}-${expiresAt.day.toString().padLeft(2, '0')}';
+  await postInboxNote(
+    title: 'Online class expiry',
+    body: '$title expires on $day. Renew it from Profile to keep it visible.',
+    kind: 'listing_expiry',
+    noteId: 'expiry_scheduled_$listingId',
+  );
+  if (!_ready || !when.isAfter(DateTime.now())) return;
+  const details = NotificationDetails(
+    android: AndroidNotificationDetails(
+      'listing_expiry',
+      'Listing expiry',
+      channelDescription:
+          'A reminder the day before an online class post expires.',
+      importance: Importance.high,
+      priority: Priority.high,
+    ),
+    iOS: DarwinNotificationDetails(),
+  );
+  await _plugin.zonedSchedule(
+    id: _idFor(listingId, 'expiry'),
+    title: 'Online class expires tomorrow',
+    body: '$title expires tomorrow. Renew it to stay visible.',
+    scheduledDate: tz.TZDateTime.from(when, tz.local),
+    notificationDetails: details,
+    androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
+    payload: listingId,
+  );
+}

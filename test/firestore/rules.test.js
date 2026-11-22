@@ -306,3 +306,157 @@ test('inbox and saved classes belong to the profile owner', async () => {
   }));
   await assertFails(getDocs(collection(db('other'), 'profiles/learner/saved')));
 });
+
+function emailDb(uid, email) {
+  return testEnv.authenticatedContext(uid, { email }).firestore();
+}
+
+test('an online listing cannot expire more than 31 days out', async () => {
+  const postedAt = Timestamp.fromMillis(Date.now());
+  const soon = Timestamp.fromMillis(Date.now() + 10 * 24 * 60 * 60 * 1000);
+  const late = Timestamp.fromMillis(Date.now() + 40 * 24 * 60 * 60 * 1000);
+  await assertSucceeds(setDoc(doc(db('master'), 'listings/online1'), {
+    creatorId: 'master',
+    title: 'Online Hindi',
+    listing_type: 'online',
+    postedAt,
+    expires_at: soon,
+  }));
+  await assertFails(setDoc(doc(db('master'), 'listings/online2'), {
+    creatorId: 'master',
+    title: 'Too long',
+    listing_type: 'online',
+    postedAt,
+    expires_at: late,
+  }));
+  await assertSucceeds(updateDoc(doc(db('master'), 'listings/online1'), {
+    creatorId: 'master',
+    title: 'Online Hindi',
+    listing_type: 'online',
+    renewedAt: Timestamp.fromMillis(Date.now()),
+    expires_at: Timestamp.fromMillis(Date.now() + 20 * 24 * 60 * 60 * 1000),
+  }));
+  await assertFails(updateDoc(doc(db('master'), 'listings/online1'), {
+    creatorId: 'master',
+    title: 'Online Hindi',
+    listing_type: 'online',
+    renewedAt: Timestamp.fromMillis(Date.now()),
+    expires_at: late,
+  }));
+});
+
+test('academy owner, teacher, and student stay in their roles', async () => {
+  await seed(async (adminDb) => {
+    await setDoc(doc(adminDb, 'profiles/learner'), { mcId: 'MC100245', phoneNumber: '9845011122' });
+  });
+  const owner = db('owner');
+  await assertSucceeds(setDoc(doc(owner, 'academies/ac1'), {
+    ownerId: 'owner',
+    name: 'Raga Academy',
+    address: 'Jayanagar, Bangalore',
+  }));
+  await assertFails(setDoc(doc(db('stranger'), 'academies/ac1/teachers/stranger'), {
+    userId: 'stranger',
+    status: 'active',
+    salaryAmount: 1,
+    name: 'Nope',
+  }));
+  const invite = {
+    academyId: 'ac1',
+    academyName: 'Raga Academy',
+    ownerId: 'owner',
+    status: 'invited',
+    salaryAmount: 15000,
+    teacherName: 'Asha',
+  };
+  await assertSucceeds(setDoc(doc(owner, 'academyInvitesByEmail/asha@example.com/items/ac1'), invite));
+  await assertFails(getDoc(doc(db('stranger'), 'academyInvitesByEmail/asha@example.com/items/ac1')));
+  const teacher = emailDb('teacher', 'asha@example.com');
+  await assertSucceeds(getDoc(doc(teacher, 'academyInvitesByEmail/asha@example.com/items/ac1')));
+  await assertSucceeds(updateDoc(doc(teacher, 'academyInvitesByEmail/asha@example.com/items/ac1'), {
+    status: 'accepted',
+    teacherUid: 'teacher',
+  }));
+  await assertSucceeds(setDoc(doc(teacher, 'academies/ac1/teachers/teacher'), {
+    userId: 'teacher',
+    status: 'active',
+    salaryAmount: 15000,
+    name: 'Asha',
+  }));
+  await assertSucceeds(setDoc(doc(owner, 'academies/ac1/batches/morning'), {
+    name: 'Morning',
+    schedule: 'Mon 7:00',
+    capacity: 12,
+    teacherUid: 'teacher',
+  }));
+  await assertSucceeds(setDoc(doc(owner, 'academies/ac1/batches/evening'), {
+    name: 'Evening',
+    schedule: 'Tue 18:00',
+    capacity: 12,
+    teacherUid: 'someone',
+  }));
+  await assertSucceeds(setDoc(doc(teacher, 'academies/ac1/attendance/morning_2026-11-22'), {
+    batchId: 'morning',
+    date: '2026-11-22',
+    marks: { s1: 'present' },
+    authorId: 'teacher',
+    teacherUid: 'teacher',
+  }));
+  await assertFails(setDoc(doc(teacher, 'academies/ac1/attendance/evening_2026-11-22'), {
+    batchId: 'evening',
+    date: '2026-11-22',
+    marks: {},
+    authorId: 'teacher',
+    teacherUid: 'teacher',
+  }));
+  await assertSucceeds(setDoc(doc(teacher, 'academies/ac1/announcements/a1'), {
+    batchId: 'morning',
+    title: 'Bring the book',
+    body: 'Page 4.',
+    authorId: 'teacher',
+    teacherUid: 'teacher',
+    createdAt: '2026-11-22T00:00:00.000Z',
+  }));
+  await assertFails(setDoc(doc(teacher, 'academies/ac1/announcements/a2'), {
+    batchId: 'evening',
+    title: 'Wrong batch',
+    body: 'No.',
+    authorId: 'teacher',
+    teacherUid: 'teacher',
+    createdAt: '2026-11-22T00:00:00.000Z',
+  }));
+  await assertSucceeds(setDoc(doc(owner, 'academies/ac1/students/MC100245'), {
+    name: 'Anita',
+    mcId: 'MC100245',
+    userId: 'learner',
+    batchId: 'morning',
+    batchTeacherUid: 'teacher',
+    unitAmount: 2000,
+    feePeriod: 'month',
+    monthsBilled: 1,
+    amountPaid: 500,
+  }));
+  await assertSucceeds(setDoc(doc(owner, 'academies/ac1/students/MC100999'), {
+    name: 'Other',
+    mcId: 'MC100999',
+    userId: 'other',
+    batchId: 'evening',
+    batchTeacherUid: 'someone',
+    unitAmount: 1000,
+    feePeriod: 'course',
+    monthsBilled: 1,
+    amountPaid: 0,
+  }));
+  await assertSucceeds(getDoc(doc(db('learner'), 'academies/ac1/students/MC100245')));
+  await assertFails(getDoc(doc(db('learner'), 'academies/ac1/students/MC100999')));
+  await assertSucceeds(setDoc(doc(owner, 'academies/ac1/salaries/teacher_2026-11'), {
+    teacherUid: 'teacher',
+    month: '2026-11',
+    total: 15000,
+    paid: 5000,
+  }));
+  await assertSucceeds(getDoc(doc(teacher, 'academies/ac1/salaries/teacher_2026-11')));
+  await assertFails(updateDoc(doc(teacher, 'academies/ac1/salaries/teacher_2026-11'), { paid: 15000 }));
+  await assertFails(getDoc(doc(db('learner'), 'academies/ac1/salaries/teacher_2026-11')));
+  await assertSucceeds(getDocs(collection(owner, 'academies/ac1/students')));
+});

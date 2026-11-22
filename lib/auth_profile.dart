@@ -12,9 +12,11 @@ import 'package:flutter/material.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:image_picker/image_picker.dart';
 
+import 'academy.dart';
 import 'app_theme.dart';
-import 'category_style.dart';
 import 'class_reminders.dart';
+import 'listing_expiry.dart';
+import 'category_style.dart';
 import 'class_reviews.dart';
 import 'profile_photo.dart';
 import 'class_roster_pages.dart';
@@ -817,6 +819,8 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
               ),
               const SizedBox(height: 14),
+              const AcademyInvitesSection(),
+              const SizedBox(height: 14),
               Builder(
                 builder: (context) {
                   final colors = AppPalette.of(context);
@@ -903,7 +907,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             crossAxisCount: 2,
                             crossAxisSpacing: 12,
                             mainAxisSpacing: 12,
-                            childAspectRatio: .57,
+                            childAspectRatio: .48,
                           ),
                       itemBuilder: (context, index) {
                         final doc = classes[index];
@@ -1226,6 +1230,22 @@ class _PostedClassCard extends StatelessWidget {
                         ),
                       ],
                     ),
+                    if (format == 'online') ...[
+                      const SizedBox(height: 4),
+                      _OnlineExpiryLine(data: data),
+                    ],
+                    if (data['is_academy'] == true &&
+                        (data['academyId'] ?? '').toString().isNotEmpty)
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: TextButton(
+                          onPressed: () => openAcademy(
+                            context,
+                            (data['academyId'] ?? '').toString(),
+                          ),
+                          child: const Text('Academy'),
+                        ),
+                      ),
                     const SizedBox(height: 4),
                     Align(
                       alignment: Alignment.centerRight,
@@ -1256,6 +1276,65 @@ class _PostedClassCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _OnlineExpiryLine extends StatelessWidget {
+  const _OnlineExpiryLine({required this.data});
+
+  final Map<String, dynamic> data;
+
+  bool get expired {
+    final when = readTimestampDate(data['expires_at']);
+    if (when == null) return false;
+    return !when.isAfter(DateTime.now());
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final when = readTimestampDate(data['expires_at']);
+    final label = when == null
+        ? 'Expiry not set'
+        : expired
+        ? 'Expired ${formatExpiryDate(when)}'
+        : 'Expires ${formatExpiryDate(when)}';
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: expired
+                  ? const Color(0xFF9F1239)
+                  : const Color(0xFF1A1A1A),
+            ),
+          ),
+        ),
+        TextButton(
+          onPressed: () => renewOnlineListing(data),
+          child: const Text('Renew'),
+        ),
+      ],
+    );
+  }
+}
+
+Future<void> renewOnlineListing(Map<String, dynamic> data) async {
+  final id = (data['id'] ?? '').toString();
+  if (id.isEmpty) return;
+  final anchor = DateTime.now();
+  final expires = capOnlineExpiry(anchor: anchor);
+  await firestore.collection('listings').doc(id).update({
+    'expires_at': Timestamp.fromDate(expires),
+    'expiry_date': expires.toIso8601String().substring(0, 10),
+    'renewedAt': Timestamp.fromDate(anchor),
+  });
+  await scheduleListingExpiryReminder(
+    listingId: id,
+    title: (data['title'] ?? 'Online class').toString(),
+    expiresAt: expires,
+  );
 }
 
 class _PostedClassImagePlaceholder extends StatelessWidget {

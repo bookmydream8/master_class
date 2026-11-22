@@ -13,17 +13,27 @@ Future<void> postInboxNote({
   required String body,
   required String kind,
   String? userId,
+  String? noteId,
 }) async {
   final user = FirebaseAuth.instance.currentUser;
   final uid = userId ?? user?.uid;
   if (uid == null || uid.isEmpty) return;
-  await firestore.collection('profiles').doc(uid).collection('notifications').add({
+  final notes = firestore
+      .collection('profiles')
+      .doc(uid)
+      .collection('notifications');
+  final payload = {
     'title': title,
     'body': body,
     'kind': kind,
     'read': false,
     'createdAt': FieldValue.serverTimestamp(),
-  });
+  };
+  if (noteId == null) {
+    await notes.add(payload);
+  } else {
+    await notes.doc(noteId).set(payload);
+  }
 }
 
 class NotificationInboxPage extends StatelessWidget {
