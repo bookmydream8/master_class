@@ -16,6 +16,8 @@ import 'academy.dart';
 import 'app_theme.dart';
 import 'class_reminders.dart';
 import 'listing_expiry.dart';
+import 'spark_logic.dart';
+import 'spark_pages.dart';
 import 'category_style.dart';
 import 'class_reviews.dart';
 import 'profile_photo.dart';
@@ -820,6 +822,16 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
               const SizedBox(height: 14),
               const AcademyInvitesSection(),
+              const SizedBox(height: 8),
+              const FollowingSection(),
+              const VerificationSubmitButton(),
+              SharePosterButton(
+                title: displayName,
+                subtitle: profileCity.isEmpty ? 'Master Class' : profileCity,
+                detail: mcId.isEmpty ? 'Learner profile' : mcId,
+                link: masterShareLink(signedIn ? user.uid : 'preview'),
+                color: const Color(0xFFD3ECF8),
+              ),
               const SizedBox(height: 14),
               Builder(
                 builder: (context) {

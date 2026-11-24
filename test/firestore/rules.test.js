@@ -15,6 +15,7 @@ const {
   setDoc,
   updateDoc,
   Timestamp,
+  writeBatch,
 } = require('firebase/firestore');
 
 const projectId = 'demo-master-class';
@@ -459,4 +460,93 @@ test('academy owner, teacher, and student stay in their roles', async () => {
   await assertFails(updateDoc(doc(teacher, 'academies/ac1/salaries/teacher_2026-11'), { paid: 15000 }));
   await assertFails(getDoc(doc(db('learner'), 'academies/ac1/salaries/teacher_2026-11')));
   await assertSucceeds(getDocs(collection(owner, 'academies/ac1/students')));
+});
+
+test('follows, verification, chat, coupons, materials, and session requests', async () => {
+  await seed(async (adminDb) => {
+    await setDoc(doc(adminDb, 'profiles/master'), { name: 'Meera', followerCount: 0, role: 'Master' });
+    await setDoc(doc(adminDb, 'profiles/learner'), { mcId: 'MC100245', role: 'Learner' });
+    await setDoc(doc(adminDb, 'admins/admin1'), { note: 'console' });
+    await setDoc(doc(adminDb, 'listings/class1'), { creatorId: 'master', title: 'Tabla' });
+  });
+  await assertSucceeds(setDoc(doc(db('learner'), 'profiles/master/followers/learner'), {
+    userId: 'learner',
+    name: 'Anita',
+  }));
+  await assertFails(setDoc(doc(db('learner'), 'profiles/master/followers/other'), {
+    userId: 'other',
+    name: 'No',
+  }));
+  await assertSucceeds(updateDoc(doc(db('learner'), 'profiles/master'), { followerCount: 1 }));
+  await assertFails(updateDoc(doc(db('learner'), 'profiles/master'), { followerCount: 9 }));
+  await assertFails(updateDoc(doc(db('learner'), 'profiles/learner'), { verified: true }));
+  await assertSucceeds(updateDoc(doc(db('admin1'), 'profiles/learner'), { verified: true }));
+
+  await assertSucceeds(setDoc(doc(db('learner'), 'listings/class1/interests/learner'), {
+    userId: 'learner',
+    listingId: 'class1',
+    status: 'interested',
+    listingTitle: 'Tabla',
+    userName: 'Anita',
+  }));
+  await assertSucceeds(setDoc(doc(db('master'), 'listings/class1/materials/m1'), {
+    title: 'Warmup notes',
+    kind: 'note',
+    authorId: 'master',
+    size: 12,
+  }));
+  await assertSucceeds(getDoc(doc(db('learner'), 'listings/class1/materials/m1')));
+  await assertFails(getDoc(doc(db('stranger'), 'listings/class1/materials/m1')));
+
+  await assertSucceeds(setDoc(doc(db('learner'), 'listings/class1/chats/learner'), {
+    listingId: 'class1',
+  }));
+  await assertSucceeds(setDoc(doc(db('learner'), 'listings/class1/chats/learner/messages/m1'), {
+    authorId: 'learner',
+    text: 'Hello',
+  }));
+  await assertFails(setDoc(doc(db('stranger'), 'listings/class1/chats/learner/messages/m2'), {
+    authorId: 'stranger',
+    text: 'Nope',
+  }));
+  await assertSucceeds(setDoc(doc(db('master'), 'profiles/master/blocks/learner'), { userId: 'learner' }));
+  await assertFails(setDoc(doc(db('learner'), 'listings/class1/chats/learner/messages/m3'), {
+    authorId: 'learner',
+    text: 'Blocked',
+  }));
+
+  await assertSucceeds(setDoc(doc(db('master'), 'listings/class1/coupons/SAVE10'), {
+    kind: 'percent',
+    value: 10,
+    used: 0,
+    limit: 5,
+  }));
+  const learner = db('learner');
+  await assertSucceeds(setDoc(doc(learner, 'listings/class1/couponUses/learner'), {
+    userId: 'learner',
+    code: 'SAVE10',
+    counted: false,
+  }));
+  const batch = writeBatch(learner);
+  batch.update(doc(learner, 'listings/class1/coupons/SAVE10'), { used: 1 });
+  batch.update(doc(learner, 'listings/class1/couponUses/learner'), {
+    counted: true,
+    userId: 'learner',
+    code: 'SAVE10',
+  });
+  await assertSucceeds(batch.commit());
+
+  await assertSucceeds(setDoc(doc(db('learner'), 'listings/class1/sessionRequests/r1'), {
+    userId: 'learner',
+    status: 'pending',
+    kind: 'cancel',
+    note: 'Travel',
+  }));
+  await assertSucceeds(updateDoc(doc(db('master'), 'listings/class1/sessionRequests/r1'), {
+    status: 'approved',
+    userId: 'learner',
+  }));
+  await assertFails(updateDoc(doc(db('learner'), 'listings/class1/sessionRequests/r1'), {
+    status: 'declined',
+  }));
 });

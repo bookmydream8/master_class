@@ -8,7 +8,7 @@ These functions send fee reminders, class announcements, interest alerts, and ev
 - `announce` runs when a master creates `listings/{listingId}/announcements/{id}` and pushes the message to the enrolled learners (or one batch, when `batchId` is set).
 - `interestNotice` runs when a learner creates `listings/{listingId}/interests/{uid}`. It writes an inbox entry for the class master and sends an FCM push to the master's saved device tokens.
 - `eventReminders` runs every day at 03:30 UTC, which is 09:00 IST. It finds events whose `start_date` is tomorrow, writes one inbox entry per matching user, and sends one FCM message to the topic `city_<slug>` (for example `city_bangalore`). A user matches when `profiles/{uid}.city` or `preferredEventCity` equals the event city. The app subscribes the device to those topics on launch, sign-in, and when the city changes. A marker at `eventReminders/{listingId}_{yyyy-mm-dd}` stops a second run from sending the same reminder. Demo listings are skipped.
-- `onlineExpiryReminders` runs every day at 03:30 UTC. It finds online listings whose `expires_at` is tomorrow and reminds the master. A marker at `expiryReminders/{listingId}_{yyyy-mm-dd}` stops a second send. Until Cloud Functions are deployed (the project is not on the Blaze plan yet), the master's phone schedules the same reminder locally when the class is posted or renewed, and writes an inbox note immediately.
+- `inboxPush` is optional. It sends FCM when an in-app inbox note is created. Leave it undeployed on the Spark plan. The app already writes the inbox note on the device.
 
 ## One-time setup
 

@@ -2,6 +2,12 @@
 
 Home has an Upcoming events link (next 10 days, plus the last few completed events). Online class posts expire within 31 days; the master sees the date and can renew, and the phone reminds them one day before. Physical posts can be an Academy with teachers, batches, student fees, and teacher salaries.
 
+Share a class or master poster from the detail screen (image, link, and QR). Follow a master to see their new posts in your inbox and on Home. Class materials, a student gallery, messages, coupons, and cancel or reschedule requests stay inside the class. Verified badges are approved by an admin. My Schedule exports an `.ics` file through the share sheet. None of this needs Cloud Functions while the project is on Spark. An optional `inboxPush` function is in `functions/index.js` for later. Deploy rules before using the new collections:
+
+```bash
+firebase deploy --only firestore:rules,storage
+```
+
 Cloud Functions for expiry reminders are in `functions/` and are ready to deploy later. They are not required while the project is off the Blaze plan, because the app schedules the reminder on the device. See `functions/README.md` before the first deploy:
 
 ```bash

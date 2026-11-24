@@ -86,6 +86,12 @@ class CourseCard extends StatelessWidget {
                       foreground: ink,
                     ),
                   ),
+                  if (data['verifiedMaster'] == true)
+                    const Positioned(
+                      right: 48,
+                      top: 10,
+                      child: Icon(Icons.verified, color: Colors.white, size: 20),
+                    ),
                   Positioned(
                     right: 8,
                     top: 8,

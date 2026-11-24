@@ -82,7 +82,9 @@ service cloud.firestore {
         && (!('registrationCompleted' in data) || data.registrationCompleted is bool)
         && (!('uid' in data) || data.uid == request.auth.uid)
         && (!('mcId' in data) || validMcId(data.mcId))
-        && (!('updatedAt' in data) || data.updatedAt is timestamp);
+        && (!('updatedAt' in data) || data.updatedAt is timestamp)
+        && (!('verified' in data) || data.verified is bool)
+        && (!('followerCount' in data) || (data.followerCount is int && data.followerCount >= 0 && data.followerCount < 1000000));
     }
 
     // A valid MC ID, once stored, cannot be replaced.
@@ -93,6 +95,34 @@ service cloud.firestore {
         || resource.data.mcId == request.resource.data.mcId;
     }
 
+    function verifiedLocked() {
+      return isAdmin()
+        || (
+          resource != null
+          && request.resource.data.get('verified', false) == resource.data.get('verified', false)
+        )
+        || (
+          resource == null
+          && request.resource.data.get('verified', false) == false
+        );
+    }
+
+    function followerCountStep(uid) {
+      return signedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['followerCount'])
+        && request.resource.data.followerCount is int
+        && (
+          (
+            request.resource.data.followerCount == resource.data.get('followerCount', 0) + 1
+            && exists(/databases/$(database)/documents/profiles/$(uid)/followers/$(request.auth.uid))
+          )
+          || (
+            request.resource.data.followerCount == resource.data.get('followerCount', 0) - 1
+            && request.resource.data.followerCount >= 0
+            && !exists(/databases/$(database)/documents/profiles/$(uid)/followers/$(request.auth.uid))
+          )
+        );
+    }
     function noteShape() {
       let data = request.resource.data;
       return data.keys().hasOnly(['title', 'body', 'kind', 'read', 'createdAt'])
@@ -101,7 +131,7 @@ service cloud.firestore {
         && data.title.size() <= 120
         && data.body is string
         && data.body.size() <= 1000
-        && data.kind in ['class_reminder', 'fee_due', 'announcement', 'listing_expiry']
+        && data.kind in ['class_reminder', 'fee_due', 'announcement', 'listing_expiry', 'new_class', 'session_change', 'gallery']
         && data.read == false
         && data.createdAt is timestamp;
     }
@@ -132,8 +162,13 @@ service cloud.firestore {
     match /profiles/{uid} {
       allow get: if signedIn();
       allow list: if false;
-      allow create: if isOwner(uid) && profileShape();
-      allow update: if isOwner(uid) && profileShape() && mcIdUnchanged();
+      allow create: if isOwner(uid) && profileShape() && verifiedLocked();
+      allow update: if (
+          isOwner(uid) && profileShape() && mcIdUnchanged() && verifiedLocked()
+        ) || (
+          isAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['verified'])
+        ) || followerCountStep(uid);
       allow delete: if false;
 
       match /notifications/{noteId} {
@@ -141,8 +176,45 @@ service cloud.firestore {
         allow create: if noteShape() && (
           isOwner(uid)
           || (signedIn() && request.resource.data.kind == 'announcement')
+          || (
+            signedIn()
+            && request.resource.data.kind == 'new_class'
+            && exists(/databases/$(database)/documents/profiles/$(request.auth.uid)/followers/$(uid))
+          )
+          || (signedIn() && request.resource.data.kind == 'session_change')
+          || (signedIn() && request.resource.data.kind == 'gallery')
         );
         allow update, delete: if isOwner(uid);
+      }
+
+      match /following/{masterId} {
+        allow read: if isOwner(uid);
+        allow create, delete: if isOwner(uid) && masterId.size() > 0 && masterId.size() <= 80;
+        allow update: if false;
+      }
+
+      match /followers/{followerId} {
+        allow read: if isOwner(uid) || isOwner(followerId);
+        allow create, delete: if isOwner(followerId);
+        allow update: if false;
+      }
+
+      match /blocks/{otherId} {
+        allow read: if isOwner(uid) || isOwner(otherId);
+        allow create, delete: if isOwner(uid);
+        allow update: if false;
+      }
+
+      match /verification/{docId} {
+        allow read: if isOwner(uid) || isAdmin();
+        allow create: if isOwner(uid)
+          && request.resource.data.status == 'pending'
+          && request.resource.data.note is string
+          && request.resource.data.note.size() <= 500;
+        allow update: if isAdmin()
+          && request.resource.data.status in ['approved', 'rejected']
+          && request.resource.data.ownerId == uid;
+        allow delete: if false;
       }
 
       match /saved/{listingId} {
@@ -414,6 +486,143 @@ service cloud.firestore {
           && request.resource.data.createdAt is string;
         allow update, delete: if false;
       }
+
+      function canJoinChat(listingId) {
+        return isMaster(listingId) || hasInterest(listingId) || hasMyEnrollment(listingId) || isAdmin();
+      }
+
+      function notBlocked(otherId) {
+        return !exists(/databases/$(database)/documents/profiles/$(request.auth.uid)/blocks/$(otherId))
+          && !exists(/databases/$(database)/documents/profiles/$(otherId)/blocks/$(request.auth.uid));
+      }
+
+      function isListingTeacher(listingId) {
+        let data = get(listingPath(listingId)).data;
+        return data.keys().hasAny(['academyId'])
+          && data.academyId is string
+          && isAcademyTeacher(data.academyId);
+      }
+
+      match /materials/{materialId} {
+        allow read: if canJoinChat(listingId);
+        allow create: if (isMaster(listingId) || isListingTeacher(listingId))
+          && request.resource.data.title is string
+          && request.resource.data.title.size() > 0
+          && request.resource.data.title.size() <= 120
+          && request.resource.data.kind in ['pdf', 'image', 'note', 'link']
+          && request.resource.data.authorId == request.auth.uid
+          && (!('size' in request.resource.data) || (request.resource.data.size is int && request.resource.data.size <= 10 * 1024 * 1024));
+        allow delete: if isMaster(listingId);
+        allow update: if false;
+      }
+
+      match /coupons/{code} {
+        allow read: if signedIn();
+        allow create: if isMaster(listingId)
+          && request.resource.data.kind in ['percent', 'flat']
+          && request.resource.data.value is int
+          && request.resource.data.value > 0
+          && request.resource.data.value <= 100000
+          && request.resource.data.used == 0
+          && request.resource.data.limit is int
+          && request.resource.data.limit >= 0
+          && request.resource.data.limit <= 100000;
+        allow delete: if isMaster(listingId);
+        allow update: if isMaster(listingId)
+          || (
+            signedIn()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['used'])
+            && request.resource.data.used == resource.data.used + 1
+            && get(/databases/$(database)/documents/listings/$(listingId)/couponUses/$(request.auth.uid)).data.userId == request.auth.uid
+            && get(/databases/$(database)/documents/listings/$(listingId)/couponUses/$(request.auth.uid)).data.counted != true
+            && getAfter(/databases/$(database)/documents/listings/$(listingId)/couponUses/$(request.auth.uid)).data.counted == true
+          );
+      }
+
+      match /couponUses/{userId} {
+        allow read: if isMaster(listingId) || isOwner(userId);
+        allow create: if isOwner(userId)
+          && request.resource.data.userId == userId
+          && request.resource.data.code is string
+          && request.resource.data.code.size() <= 40
+          && request.resource.data.counted == false;
+        allow update: if isOwner(userId)
+          && resource.data.counted != true
+          && request.resource.data.counted == true
+          && request.resource.data.userId == resource.data.userId
+          && request.resource.data.code == resource.data.code;
+      }
+
+      match /gallery/{postId} {
+        allow get: if canJoinChat(listingId) && (
+          resource.data.hidden == false
+          || isMaster(listingId)
+          || resource.data.authorId == request.auth.uid
+        );
+        allow list: if isMaster(listingId)
+          || (canJoinChat(listingId) && resource.data.hidden == false);
+        allow create: if (hasMyEnrollment(listingId) || hasInterest(listingId))
+          && request.resource.data.authorId == request.auth.uid
+          && request.resource.data.caption is string
+          && request.resource.data.caption.size() <= 300
+          && request.resource.data.hidden == false;
+        allow update: if (
+          isMaster(listingId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['hidden'])
+        ) || (
+          canJoinChat(listingId)
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likes'])
+          && request.resource.data.likes == resource.data.likes + 1
+        );
+        allow delete: if isMaster(listingId) || (signedIn() && resource.data.authorId == request.auth.uid);
+      }
+
+      match /gallery/{postId}/comments/{commentId} {
+        allow read: if canJoinChat(listingId);
+        allow create: if isMaster(listingId)
+          && request.resource.data.authorId == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 500;
+        allow update, delete: if false;
+      }
+
+      match /sessionRequests/{requestId} {
+        allow read: if isMaster(listingId) || (signedIn() && resource.data.userId == request.auth.uid);
+        allow create: if signedIn()
+          && (hasInterest(listingId) || hasMyEnrollment(listingId))
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.status == 'pending'
+          && request.resource.data.kind in ['cancel', 'reschedule']
+          && request.resource.data.note is string
+          && request.resource.data.note.size() <= 500;
+        allow update: if isMaster(listingId)
+          && request.resource.data.status in ['approved', 'declined']
+          && request.resource.data.userId == resource.data.userId;
+        allow delete: if false;
+      }
+
+      match /chats/{chatId} {
+        allow read: if canJoinChat(listingId);
+        allow create: if canJoinChat(listingId)
+          && request.resource.data.listingId == listingId;
+        allow update: if canJoinChat(listingId);
+        allow delete: if isMaster(listingId);
+
+        match /messages/{messageId} {
+          allow read: if canJoinChat(listingId);
+          allow create: if canJoinChat(listingId)
+            && request.resource.data.authorId == request.auth.uid
+            && request.resource.data.text is string
+            && request.resource.data.text.size() <= 2000
+            && notBlocked(get(listingPath(listingId)).data.creatorId == request.auth.uid ? chatId : get(listingPath(listingId)).data.creatorId);
+          allow update, delete: if false;
+        }
+
+        match /reads/{userId} {
+          allow read, write: if isOwner(userId) && canJoinChat(listingId);
+        }
+      }
     }
 
     // Phone, email, and UPI stay off the public listing. A learner can read
@@ -621,6 +830,18 @@ service cloud.firestore {
         )
       );
       allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
+    }
+
+    match /reports/{reportId} {
+      allow create: if signedIn()
+        && request.resource.data.reporterId == request.auth.uid
+        && request.resource.data.reason is string
+        && request.resource.data.reason.size() > 0
+        && request.resource.data.reason.size() <= 500
+        && request.resource.data.targetId is string
+        && request.resource.data.targetId.size() <= 120;
+      allow read: if isAdmin();
+      allow update, delete: if false;
     }
 
     match /{document=**} {

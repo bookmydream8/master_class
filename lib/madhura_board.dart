@@ -15,6 +15,7 @@ import 'events_page.dart';
 import 'home_catalogue.dart';
 import 'home_illustrations.dart';
 import 'profile_photo.dart';
+import 'spark_pages.dart';
 import 'language_section.dart';
 import 'nearby_map.dart';
 import 'notification_inbox.dart';
@@ -986,6 +987,27 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
           ),
         ),
         const SizedBox(height: 12),
+        NextUpCard(
+          listings: _homeCatalogue(),
+          onOpen: (data) => showMasterClassDetails(context, data),
+        ),
+        const SizedBox(height: 8),
+        _quickLink(
+          context,
+          art: 'curriculum',
+          title: 'My schedule',
+          subtitle: 'This week, with a calendar file to share',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => MySchedulePage(listings: _homeCatalogue()),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        FollowingRail(
+          listings: _homeCatalogue(),
+          onOpen: (data) => showMasterClassDetails(context, data),
+        ),
         PromoCarousel(onOpen: _openBrowse),
         const SizedBox(height: 18),
         LearnYourWay(listings: _homeCatalogue(), onOpen: _openBrowse),
