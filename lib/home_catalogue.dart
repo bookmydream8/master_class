@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'app_theme.dart';
 import 'category_style.dart';
+import 'home_illustrations.dart';
 import 'firestore_database.dart';
 import 'madhura_board.dart' as board;
 import 'seed/bangalore_demo.dart';
@@ -37,10 +38,12 @@ class CourseCard extends StatelessWidget {
     final enrolled = enrolledCount(data);
     final price = board.listingPrice(data);
     final categoryId = (data['category'] ?? '').toString();
-    final categoryName = board.categoryIds.entries
-        .where((entry) => entry.value == categoryId)
-        .map((entry) => entry.key)
-        .firstOrNull ?? categoryId;
+    final categoryName =
+        board.categoryIds.entries
+            .where((entry) => entry.value == categoryId)
+            .map((entry) => entry.key)
+            .firstOrNull ??
+        categoryId;
     final fresh = postedToday(data) || postedYesterday(data);
     final live = isLiveClass(data);
     final imageUrl = (data['image_url'] ?? '').toString();
@@ -77,7 +80,11 @@ class CourseCard extends StatelessWidget {
                   Positioned(
                     left: 10,
                     top: 10,
-                    child: _Pill(label: categoryName, background: tint, foreground: ink),
+                    child: _Pill(
+                      label: categoryName,
+                      background: tint,
+                      foreground: ink,
+                    ),
                   ),
                   Positioned(
                     right: 8,
@@ -148,8 +155,13 @@ class CourseCard extends StatelessWidget {
                         radius: 12,
                         backgroundColor: tint,
                         child: Text(
-                          educator.isEmpty ? 'M' : educator.characters.first.toUpperCase(),
-                          style: text.labelSmall?.copyWith(color: ink, fontSize: 11),
+                          educator.isEmpty
+                              ? 'M'
+                              : educator.characters.first.toUpperCase(),
+                          style: text.labelSmall?.copyWith(
+                            color: ink,
+                            fontSize: 11,
+                          ),
                         ),
                       ),
                       const SizedBox(width: 6),
@@ -162,7 +174,11 @@ class CourseCard extends StatelessWidget {
                         ),
                       ),
                       if (rating != null) ...[
-                        const Icon(Icons.star_rounded, size: 16, color: Color(0xFFD97706)),
+                        const Icon(
+                          Icons.star_rounded,
+                          size: 16,
+                          color: Color(0xFFD97706),
+                        ),
                         Text(
                           rating.toStringAsFixed(1),
                           style: text.labelSmall?.copyWith(color: colors.ink),
@@ -172,7 +188,9 @@ class CourseCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 6),
                   Text(
-                    enrolled == 1 ? '1 learner joined' : '$enrolled learners joined',
+                    enrolled == 1
+                        ? '1 learner joined'
+                        : '$enrolled learners joined',
                     style: text.bodySmall?.copyWith(color: colors.muted),
                   ),
                 ],
@@ -252,10 +270,8 @@ class _Pill extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-          color: foreground,
-          fontWeight: FontWeight.w700,
-        ),
+        style: Theme.of(context).textTheme.labelSmall
+            ?.copyWith(color: foreground, fontWeight: FontWeight.w700),
       ),
     );
   }
@@ -336,18 +352,14 @@ class _PromoCarouselState extends State<PromoCarousel> {
                           children: [
                             Text(
                               banner.kicker,
-                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                color: ink,
-                                letterSpacing: 1.1,
-                              ),
+                              style: Theme.of(context).textTheme.labelSmall
+                                  ?.copyWith(color: ink, letterSpacing: 1.1),
                             ),
                             const SizedBox(height: 8),
                             Text(
                               banner.title,
-                              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                color: ink,
-                                height: 1.15,
-                              ),
+                              style: Theme.of(context).textTheme.headlineSmall
+                                  ?.copyWith(color: ink, height: 1.15),
                             ),
                             const Spacer(),
                             Row(
@@ -441,7 +453,7 @@ class HomeCategoryRail extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Icon(style.icon, color: ink),
+                    HomeIllustration(id.isEmpty ? 'custom' : id, size: 36),
                     const SizedBox(height: 6),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 6),
@@ -450,10 +462,8 @@ class HomeCategoryRail extends StatelessWidget {
                         maxLines: 2,
                         textAlign: TextAlign.center,
                         overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: ink,
-                          fontWeight: FontWeight.w700,
-                        ),
+                        style: Theme.of(context).textTheme.labelSmall
+                            ?.copyWith(color: ink, fontWeight: FontWeight.w700),
                       ),
                     ),
                   ],
@@ -496,9 +506,8 @@ class HomeCatalogue extends StatelessWidget {
             final bd = postedAt(b) ?? DateTime(2000);
             return bd.compareTo(ad);
           });
-        final top = [...source]..sort(
-          (a, b) => enrolledCount(b).compareTo(enrolledCount(a)),
-        );
+        final top = [...source]
+          ..sort((a, b) => enrolledCount(b).compareTo(enrolledCount(a)));
         final leaders = top.take(10).toList();
         final learners = learnerCount(source);
         final masters = masterCount(source);
@@ -509,7 +518,8 @@ class HomeCatalogue extends StatelessWidget {
             const SizedBox(height: 22),
             AppSectionHeader(
               title: 'New this month',
-              subtitle: 'Posted in ${DateTime.now().month == 11 ? 'November' : 'the last few weeks'}',
+              subtitle:
+                  'Posted in ${DateTime.now().month == 11 ? 'November' : 'the last few weeks'}',
               action: 'See all',
               onAction: onSeeAll,
             ),
@@ -595,11 +605,13 @@ class _StatCard extends StatelessWidget {
               children: [
                 Text(
                   value,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(color: ink),
+                  style: Theme.of(context).textTheme.titleLarge
+                      ?.copyWith(color: ink),
                 ),
                 Text(
                   label,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(color: ink),
+                  style: Theme.of(context).textTheme.bodySmall
+                      ?.copyWith(color: ink),
                 ),
               ],
             ),
@@ -611,11 +623,7 @@ class _StatCard extends StatelessWidget {
 }
 
 class _Rail extends StatelessWidget {
-  const _Rail({
-    required this.items,
-    required this.onOpen,
-    this.ranked = false,
-  });
+  const _Rail({required this.items, required this.onOpen, this.ranked = false});
 
   final List<Map<String, dynamic>> items;
   final ValueChanged<Map<String, dynamic>> onOpen;
@@ -626,9 +634,8 @@ class _Rail extends StatelessWidget {
     if (items.isEmpty) {
       return Text(
         'Nothing new in this list yet.',
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-          color: AppPalette.of(context).muted,
-        ),
+        style: Theme.of(context).textTheme.bodyMedium
+            ?.copyWith(color: AppPalette.of(context).muted),
       );
     }
     return SizedBox(
@@ -665,25 +672,25 @@ class LearnYourWay extends StatelessWidget {
       (
         format: 'online',
         title: 'Online',
-        icon: Icons.laptop_mac_rounded,
+        art: 'online',
         style: categoryStyleForId('language'),
       ),
       (
         format: 'physical',
         title: 'Physical',
-        icon: Icons.place_rounded,
+        art: 'physical',
         style: categoryStyleForId('yoga'),
       ),
       (
         format: 'competition',
         title: 'Competition',
-        icon: Icons.emoji_events_rounded,
+        art: 'competition',
         style: categoryStyleForId('sports'),
       ),
       (
         format: 'event',
         title: 'Events',
-        icon: Icons.celebration_rounded,
+        art: 'event',
         style: categoryStyleForId('workshop'),
       ),
     ];
@@ -714,7 +721,7 @@ class LearnYourWay extends StatelessWidget {
               return _FormatTile(
                 title: tile.title,
                 countLabel: '$count $noun',
-                icon: tile.icon,
+                art: tile.art,
                 style: tile.style,
                 onTap: () => onOpen(tile.format),
               );
@@ -730,14 +737,14 @@ class _FormatTile extends StatelessWidget {
   const _FormatTile({
     required this.title,
     required this.countLabel,
-    required this.icon,
+    required this.art,
     required this.style,
     required this.onTap,
   });
 
   final String title;
   final String countLabel;
-  final IconData icon;
+  final String art;
   final CategoryStyle style;
   final VoidCallback onTap;
 
@@ -772,7 +779,7 @@ class _FormatTile extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(icon, color: style.ink, size: 36),
+                  HomeIllustration(art, size: 52),
                   const Spacer(),
                   Text(
                     title,
@@ -811,7 +818,11 @@ class _FormatTile extends StatelessWidget {
 }
 
 class DemoClassesSoon extends StatelessWidget {
-  const DemoClassesSoon({super.key, required this.listings, required this.onOpen});
+  const DemoClassesSoon({
+    super.key,
+    required this.listings,
+    required this.onOpen,
+  });
 
   final List<Map<String, dynamic>> listings;
   final ValueChanged<Map<String, dynamic>> onOpen;
@@ -844,7 +855,10 @@ class DemoClassesSoon extends StatelessWidget {
               itemCount: demos.length,
               separatorBuilder: (_, _) => const SizedBox(width: 12),
               itemBuilder: (context, index) {
-                return _DemoCard(data: demos[index], onOpen: () => onOpen(demos[index]));
+                return _DemoCard(
+                  data: demos[index],
+                  onOpen: () => onOpen(demos[index]),
+                );
               },
             ),
           ),
@@ -867,7 +881,8 @@ class _DemoCard extends StatelessWidget {
     final educator = (data['creatorName'] ?? '').toString();
     final imageUrl = (data['image_url'] ?? '').toString();
     final categoryId = (data['category'] ?? '').toString();
-    final categoryName = board.categoryIds.entries
+    final categoryName =
+        board.categoryIds.entries
             .where((entry) => entry.value == categoryId)
             .map((entry) => entry.key)
             .firstOrNull ??
@@ -887,7 +902,9 @@ class _DemoCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+                  borderRadius: const BorderRadius.vertical(
+                    top: Radius.circular(22),
+                  ),
                   child: SizedBox(
                     height: 96,
                     width: double.infinity,
@@ -904,15 +921,22 @@ class _DemoCard extends StatelessWidget {
                           left: 10,
                           top: 10,
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 8,
+                              vertical: 4,
+                            ),
                             decoration: BoxDecoration(
                               color: style.tint,
                               borderRadius: BorderRadius.circular(20),
-                              border: Border.all(color: style.ink.withValues(alpha: 0.35)),
+                              border: Border.all(
+                                color: style.ink.withValues(alpha: 0.35),
+                              ),
                             ),
                             child: Text(
                               startCountdown(data),
-                              style: text.labelSmall?.copyWith(color: style.ink),
+                              style: text.labelSmall?.copyWith(
+                                color: style.ink,
+                              ),
                             ),
                           ),
                         ),
@@ -974,7 +998,11 @@ class _DemoCard extends StatelessWidget {
 }
 
 class FreshPostsSheet extends StatelessWidget {
-  const FreshPostsSheet({super.key, required this.controller, required this.onOpen});
+  const FreshPostsSheet({
+    super.key,
+    required this.controller,
+    required this.onOpen,
+  });
 
   final ScrollController controller;
   final ValueChanged<Map<String, dynamic>> onOpen;
@@ -1011,8 +1039,18 @@ class FreshPostsSheet extends StatelessWidget {
               Expanded(
                 child: TabBarView(
                   children: [
-                    _FreshList(items: today, controller: controller, onOpen: onOpen, empty: 'Nothing new today yet.'),
-                    _FreshList(items: yesterday, controller: null, onOpen: onOpen, empty: 'Nothing was posted yesterday.'),
+                    _FreshList(
+                      items: today,
+                      controller: controller,
+                      onOpen: onOpen,
+                      empty: 'Nothing new today yet.',
+                    ),
+                    _FreshList(
+                      items: yesterday,
+                      controller: null,
+                      onOpen: onOpen,
+                      empty: 'Nothing was posted yesterday.',
+                    ),
                   ],
                 ),
               ),
@@ -1043,9 +1081,8 @@ class _FreshList extends StatelessWidget {
       return Center(
         child: Text(
           empty,
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-            color: AppPalette.of(context).muted,
-          ),
+          style: Theme.of(context).textTheme.bodyMedium
+              ?.copyWith(color: AppPalette.of(context).muted),
         ),
       );
     }

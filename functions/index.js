@@ -182,6 +182,40 @@ exports.eventReminders = onSchedule({ schedule: '30 3 * * *', timeZone: 'UTC' },
   }
 });
 
+function istKeyFromDate(date) {
+  return new Date(date.getTime() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+// Daily fallback for when Cloud Functions are deployed. The app also schedules
+// a local notification on the master's device at post and renew time.
+exports.onlineExpiryReminders = onSchedule({ schedule: '30 3 * * *', timeZone: 'UTC' }, async () => {
+  const db = getFirestore();
+  const tomorrow = istDayKey(1);
+  const listings = await db.collection('listings').where('listing_type', '==', 'online').get();
+  for (const listing of listings.docs) {
+    const expires = listing.get('expires_at');
+    if (!expires || typeof expires.toDate !== 'function') continue;
+    if (istKeyFromDate(expires.toDate()) !== tomorrow) continue;
+    const markerRef = db.collection('expiryReminders').doc(`${listing.id}_${tomorrow}`);
+    if ((await markerRef.get()).exists) continue;
+    const owner = listing.get('creatorId');
+    if (!owner || String(owner).startsWith('demo_')) continue;
+    const title = listing.get('title') || 'Your online class';
+    await notifyUser(
+      owner,
+      'Online class expires tomorrow',
+      `${title} expires tomorrow. Renew it to keep it visible.`,
+      'listing_expiry',
+      `expiry_${listing.id}_${tomorrow}`,
+    );
+    await markerRef.set({
+      listingId: listing.id,
+      date: tomorrow,
+      sentAt: Timestamp.now(),
+    });
+  }
+});
+
 exports.announce = onDocumentCreated('listings/{listingId}/announcements/{announcementId}', async (event) => {
   const data = event.data ? event.data.data() : null;
   if (!data) return;

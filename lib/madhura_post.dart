@@ -13,7 +13,10 @@ import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:image_cropper/image_cropper.dart';
 
+import 'academy.dart';
 import 'app_theme.dart';
+import 'class_reminders.dart';
+import 'listing_expiry.dart';
 import 'madhura_board.dart' as board;
 import 'profile_photo.dart';
 
@@ -71,6 +74,7 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
   final customCity = TextEditingController();
   final area = TextEditingController();
   bool isFree = true;
+  bool asAcademy = false;
   String feePeriod = 'month';
   bool saving = false;
   bool locating = false;
@@ -179,6 +183,9 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
       });
     } catch (_) {}
   }
+
+  String _expiryDateString(DateTime value) =>
+      value.toIso8601String().substring(0, 10);
 
   Future<void> choosePhoto() async {
     if (choosingPhoto) return;
@@ -447,6 +454,19 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
         _ => 'competition',
       };
       final now = DateTime.now();
+      final existingPosted = readTimestampDate(widget.existing?['postedAt']);
+      final anchor = existingPosted ?? now;
+      final resolvedExpiry = format == 'online'
+          ? capOnlineExpiry(anchor: anchor, requested: expiryDate)
+          : DateTime(
+              (expiryDate ?? startDate ?? now).year,
+              (expiryDate ?? startDate ?? now).month,
+              (expiryDate ?? startDate ?? now).day,
+              23,
+              59,
+              59,
+            );
+      final postedAt = Timestamp.fromDate(anchor);
       final ref = firestore
           .collection('listings')
           .doc(
@@ -486,19 +506,9 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
             'spoken_languages': spokenLanguages.toList()..sort(),
             'age_groups': ageGroups.toList()..sort(),
             'age_group': ageGroups.join(', '),
-            'expiry_date': (expiryDate ?? startDate)!
-                .toIso8601String()
-                .substring(0, 10),
-            'expires_at': Timestamp.fromDate(
-              DateTime(
-                (expiryDate ?? startDate)!.year,
-                (expiryDate ?? startDate)!.month,
-                (expiryDate ?? startDate)!.day,
-                23,
-                59,
-                59,
-              ),
-            ),
+            'expiry_date': _expiryDateString(resolvedExpiry),
+            'expires_at': Timestamp.fromDate(resolvedExpiry),
+            if (format == 'online') 'postedAt': postedAt,
             if (previousLinks.text.trim().isNotEmpty)
               'previous_class_links': previousLinks.text.trim(),
             if (format != 'online' && selectedCity.isNotEmpty)
@@ -539,6 +549,27 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
           if (session.isNotEmpty) 'sessionLink': session,
           'updatedAt': now.toIso8601String(),
         }, SetOptions(merge: true));
+      }
+      if (format == 'online') {
+        await scheduleListingExpiryReminder(
+          listingId: ref.id,
+          title: title.text.trim(),
+          expiresAt: resolvedExpiry,
+        );
+      }
+      if (format == 'physical' && asAcademy) {
+        final address = [
+          area.text.trim(),
+          selectedCity,
+          landmark.text.trim(),
+        ].where((value) => value.isNotEmpty).join(', ');
+        await createAcademyForListing(
+          listingId: ref.id,
+          name: title.text.trim(),
+          address: address,
+          ownerId: user.uid,
+          imageBase64: encodedPhoto,
+        );
       }
       if (mounted) Navigator.of(context, rootNavigator: true).pop(true);
     } on TimeoutException {
@@ -622,6 +653,16 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                       )
                       .toList(),
                 ),
+                if (format == 'physical')
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('This is an Academy'),
+                    subtitle: const Text(
+                      'Several teachers, batches, students, fees, and salaries.',
+                    ),
+                    value: asAcademy,
+                    onChanged: (value) => setState(() => asAcademy = value),
+                  ),
               ],
             ),
           ),
@@ -971,7 +1012,9 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                 OutlinedButton(
                   onPressed: pickExpiryDate,
                   child: Text(
-                    expiryDate == null
+                    format == 'online'
+                        ? 'Online expiry: ${formatExpiryDate(capOnlineExpiry(anchor: DateTime.now(), requested: expiryDate))} (max 1 month)'
+                        : expiryDate == null
                         ? 'Expiry date (defaults to start date)'
                         : 'Expires: ${expiryDate!.day}/${expiryDate!.month}/${expiryDate!.year}',
                   ),

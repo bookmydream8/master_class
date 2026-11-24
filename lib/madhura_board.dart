@@ -11,7 +11,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app_theme.dart';
 import 'class_reminders.dart';
+import 'events_page.dart';
 import 'home_catalogue.dart';
+import 'home_illustrations.dart';
 import 'profile_photo.dart';
 import 'language_section.dart';
 import 'nearby_map.dart';
@@ -972,6 +974,18 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
           ),
         ),
         const SizedBox(height: 16),
+        _quickLink(
+          context,
+          art: 'upcoming_events',
+          title: 'Upcoming events',
+          subtitle: 'Next 10 days, plus what just finished',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => EventsPage(listings: _homeCatalogue()),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
         PromoCarousel(onOpen: _openBrowse),
         const SizedBox(height: 18),
         LearnYourWay(listings: _homeCatalogue(), onOpen: _openBrowse),
@@ -979,7 +993,7 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
           alignment: Alignment.centerLeft,
           child: TextButton.icon(
             onPressed: _openMap,
-            icon: const Icon(Icons.map_outlined),
+            icon: const HomeIllustration('map', size: 28),
             label: const Text('Physical classes on a map'),
           ),
         ),
@@ -999,7 +1013,7 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
         const SizedBox(height: 22),
         _communityEntry(
           context,
-          icon: Icons.how_to_vote_outlined,
+          art: 'demo_votes',
           title: 'Demo class votes',
           subtitle: 'Help choose the next class to try.',
           kind: 'demo_poll',
@@ -1008,7 +1022,7 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
         const SizedBox(height: 12),
         _communityEntry(
           context,
-          icon: Icons.forum_outlined,
+          art: 'request_class',
           title: 'Request a class',
           subtitle: 'Ask the community for a class you want.',
           kind: 'class_request',
@@ -1023,9 +1037,53 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
     );
   }
 
+  Widget _quickLink(
+    BuildContext context, {
+    required String art,
+    required String title,
+    required String subtitle,
+    required VoidCallback onTap,
+  }) {
+    final colors = AppPalette.of(context);
+    final text = Theme.of(context).textTheme;
+    return Material(
+      color: colors.card,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(20),
+        side: BorderSide(color: colors.line),
+      ),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            children: [
+              HomeIllustration(art, size: 48),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: text.titleSmall),
+                    Text(
+                      subtitle,
+                      style: text.bodySmall?.copyWith(color: colors.muted),
+                    ),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right, color: colors.muted),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _communityEntry(
     BuildContext context, {
-    required IconData icon,
+    required String art,
     required String title,
     required String subtitle,
     required String kind,
@@ -1055,7 +1113,7 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
                     color: colors.accentSoft,
                     borderRadius: BorderRadius.circular(14),
                   ),
-                  child: Icon(icon, color: colors.onAccentSoft),
+                  child: HomeIllustration(art, size: 36),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
