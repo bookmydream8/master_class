@@ -20,6 +20,7 @@ import 'language_section.dart';
 import 'nearby_map.dart';
 import 'notification_inbox.dart';
 import 'wishlist.dart';
+import 'masters_page.dart';
 import 'member_id.dart';
 import 'master_class_app.dart' show showPostSheet;
 import 'seed/bangalore_demo.dart';
@@ -971,10 +972,33 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
             decoration: InputDecoration(
               hintText: 'Search music, yoga, languages…',
               prefixIcon: Icon(Icons.search, color: colors.muted),
+              suffixIcon: IconButton(
+                tooltip: 'Search masters',
+                onPressed: () {
+                  openMasterListing = showMasterClassDetails;
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const MastersPage()),
+                  );
+                },
+                icon: const Icon(Icons.person_search),
+              ),
             ),
           ),
         ),
         const SizedBox(height: 16),
+        _quickLink(
+          context,
+          art: 'masters',
+          title: 'Masters',
+          subtitle: 'A mix of teachers, then search by skill or city',
+          onTap: () {
+            openMasterListing = showMasterClassDetails;
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const MastersPage()),
+            );
+          },
+        ),
+        const SizedBox(height: 12),
         _quickLink(
           context,
           art: 'upcoming_events',

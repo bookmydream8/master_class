@@ -27,6 +27,7 @@ import 'notification_inbox.dart';
 import 'upi_payment.dart';
 import 'wishlist.dart';
 import 'madhura_board.dart' as board;
+import 'masters_page.dart';
 import 'member_id.dart';
 import 'madhura_detail.dart' show showMasterClassDetails;
 import 'madhura_post.dart';
@@ -526,6 +527,7 @@ class _ProfilePageState extends State<ProfilePage> {
     unawaited(() async {
       try {
         await syncCityTopics(city: profileCity);
+        if (role == 'Master') await publishMasterProfile();
       } catch (error) {
         debugPrint('City topic was not updated: $error');
       }

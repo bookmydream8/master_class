@@ -587,3 +587,83 @@ test('follows, verification, chat, coupons, materials, and session requests', as
     status: 'declined',
   }));
 });
+
+test('a master offer stores only that master fee and a public profile stays public', async () => {
+  await seed(async (adminDb) => {
+    await setDoc(doc(adminDb, 'listings/ask1'), { creatorId: 'learner', title: 'Kannada help' });
+    await setDoc(doc(adminDb, 'admins/admin1'), { note: 'console' });
+  });
+  const learnerDb = db('learner');
+  const masterDb = db('master');
+  await assertFails(setDoc(doc(masterDb, 'registrations/response_ask1_master'), {
+    userId: 'master',
+    listingId: 'ask1',
+    status: 'interested',
+    userName: 'Meera',
+    userEmail: 'meera@example.com',
+    feeAmount: 500,
+    feePeriod: 'month',
+    timing: 'Tue 6 pm',
+  }));
+  const offer = writeBatch(masterDb);
+  offer.set(doc(masterDb, 'registrations/response_ask1_master'), {
+    userId: 'master',
+    listingId: 'ask1',
+    status: 'master_ready',
+    userName: 'Meera',
+    userEmail: 'meera@example.com',
+    feeAmount: 800,
+    feePeriod: 'month',
+    timing: 'Tue, Thu · 6 pm',
+  });
+  offer.set(doc(masterDb, 'community_responses/ask1/members/master'), {
+    listingId: 'ask1',
+    responseId: 'response_ask1_master',
+    userId: 'master',
+    userName: 'Meera',
+    status: 'master_ready',
+    feeAmount: 800,
+    feePeriod: 'month',
+    timing: 'Tue, Thu · 6 pm',
+  });
+  await assertSucceeds(offer.commit());
+  const mismatch = writeBatch(masterDb);
+  mismatch.set(doc(masterDb, 'registrations/response_ask1_master'), {
+    userId: 'master',
+    listingId: 'ask1',
+    status: 'master_ready',
+    userName: 'Meera',
+    userEmail: 'meera@example.com',
+    feeAmount: 100,
+    feePeriod: 'class',
+    timing: 'Weekends',
+  });
+  mismatch.set(doc(masterDb, 'community_responses/ask1/members/master'), {
+    listingId: 'ask1',
+    responseId: 'response_ask1_master',
+    userId: 'master',
+    userName: 'Meera',
+    status: 'master_ready',
+    feeAmount: 900,
+    feePeriod: 'month',
+    timing: 'Tue, Thu · 6 pm',
+  });
+  await assertFails(mismatch.commit());
+  await assertSucceeds(setDoc(doc(masterDb, 'master_profiles/master'), {
+    name: 'Meera',
+    pictureUrl: '',
+    city: 'Bangalore',
+    area: 'Indiranagar',
+    categoryId: 'music',
+    skills: ['Vocal'],
+    experience: '12 years',
+    rating: 4.8,
+    verified: false,
+    classCount: 2,
+    updatedAt: now(),
+  }));
+  await assertFails(updateDoc(doc(masterDb, 'master_profiles/master'), { verified: true }));
+  await assertSucceeds(updateDoc(doc(db('admin1'), 'master_profiles/master'), { verified: true }));
+  await assertSucceeds(getDoc(doc(learnerDb, 'master_profiles/master')));
+  await assertSucceeds(getDoc(doc(db(null), 'master_profiles/master')));
+});

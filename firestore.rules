@@ -320,6 +320,37 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/academies/$(academyId)/teachers/$(request.auth.uid));
     }
 
+    function masterPublicShape() {
+      let data = request.resource.data;
+      return data.keys().hasOnly([
+          'name', 'pictureUrl', 'city', 'area', 'categoryId', 'skills',
+          'experience', 'rating', 'verified', 'classCount', 'updatedAt'
+        ])
+        && data.name is string
+        && data.name.size() > 0
+        && data.name.size() <= 120
+        && data.pictureUrl is string
+        && data.pictureUrl.size() <= 1000
+        && data.city is string
+        && data.city.size() <= 100
+        && data.area is string
+        && data.area.size() <= 100
+        && data.categoryId is string
+        && data.categoryId.size() <= 40
+        && data.skills is list
+        && data.skills.size() <= 12
+        && data.experience is string
+        && data.experience.size() <= 200
+        && data.rating is number
+        && data.rating >= 0
+        && data.rating <= 5
+        && data.verified is bool
+        && data.classCount is int
+        && data.classCount >= 0
+        && data.classCount <= 10000
+        && data.updatedAt is timestamp;
+    }
+
     function attendancePlaceShape() {
       let data = request.resource.data;
       return data.markedByUid == request.auth.uid
@@ -697,7 +728,27 @@ service cloud.firestore {
         && request.resource.data.userName.size() > 0
         && request.resource.data.userName.size() <= 100
         && request.resource.data.userEmail is string
-        && request.resource.data.userEmail.size() <= 200;
+        && request.resource.data.userEmail.size() <= 200
+        && (
+          request.resource.data.status != 'master_ready'
+          || (
+            request.resource.data.feeAmount is int
+            && request.resource.data.feeAmount >= 0
+            && request.resource.data.feeAmount <= 1000000
+            && request.resource.data.feePeriod in ['month', 'class', 'once']
+            && request.resource.data.timing is string
+            && request.resource.data.timing.size() > 0
+            && request.resource.data.timing.size() <= 200
+          )
+        )
+        && (
+          request.resource.data.status == 'master_ready'
+          || (
+            !request.resource.data.keys().hasAny(['feeAmount'])
+            && !request.resource.data.keys().hasAny(['feePeriod'])
+            && !request.resource.data.keys().hasAny(['timing'])
+          )
+        );
       allow delete: if signedIn() && resource.data.userId == request.auth.uid;
     }
 
@@ -711,14 +762,24 @@ service cloud.firestore {
         return request.resource.data.responseId == 'response_' + listingId + '_' + userId
           && response.data.listingId == listingId
           && response.data.userId == userId
-          && response.data.status == request.resource.data.status;
+          && response.data.status == request.resource.data.status
+          && (
+            request.resource.data.status != 'master_ready'
+            || (
+              response.data.feeAmount == request.resource.data.feeAmount
+              && response.data.feePeriod == request.resource.data.feePeriod
+              && response.data.timing == request.resource.data.timing
+            )
+          );
       }
 
       allow create, update: if signedIn()
         && (isOwner(userId) || isMaster(listingId))
-        && request.resource.data.keys().hasOnly([
-          'listingId', 'responseId', 'userId', 'userName', 'status'
-        ])
+        && request.resource.data.keys().hasOnly(
+          request.resource.data.status == 'master_ready'
+            ? ['listingId', 'responseId', 'userId', 'userName', 'status', 'feeAmount', 'feePeriod', 'timing']
+            : ['listingId', 'responseId', 'userId', 'userName', 'status']
+        )
         && request.resource.data.listingId == listingId
         && request.resource.data.userId == userId
         && request.resource.data.userName is string
@@ -874,6 +935,20 @@ service cloud.firestore {
         )
       );
       allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
+    }
+
+    match /master_profiles/{uid} {
+      allow get, list: if true;
+      allow create: if isOwner(uid) && masterPublicShape() && request.resource.data.verified == false;
+      allow update: if (
+          isOwner(uid)
+          && masterPublicShape()
+          && request.resource.data.verified == resource.data.get('verified', false)
+        ) || (
+          isAdmin()
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['verified'])
+        );
+      allow delete: if isOwner(uid);
     }
 
     match /reports/{reportId} {
