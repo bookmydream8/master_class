@@ -161,6 +161,21 @@ test('roster writes stay with the right person', async () => {
   }));
   await assertSucceeds(getDocs(collection(learner, 'listings/class1/attendance')));
   await assertFails(getDocs(collection(stranger, 'listings/class1/fees')));
+  await assertSucceeds(setDoc(doc(master, 'listings/class1/attendancePlaces/2026-11-15'), {
+    markedByUid: 'master',
+    mcId: 'MC100001',
+    date: '2026-11-15',
+    locationStatus: 'recorded',
+    address: 'Jayanagar',
+    lat: 12.93,
+    lng: 77.58,
+    accuracy: 12,
+    distanceMeters: 30,
+    away: false,
+    markedAt: now(),
+  }));
+  await assertFails(getDoc(doc(learner, 'listings/class1/attendancePlaces/2026-11-15')));
+  await assertFails(updateDoc(doc(master, 'listings/class1/attendancePlaces/2026-11-15'), { address: 'Moved' }));
 
   await assertSucceeds(updateDoc(doc(master, 'listings/class1/enrollments/MC100245'), {
     attendees: [{ id: 'asha', name: 'Asha', age: '9', phone: '', batchId: 'evening' }],
@@ -460,6 +475,28 @@ test('academy owner, teacher, and student stay in their roles', async () => {
   await assertFails(updateDoc(doc(teacher, 'academies/ac1/salaries/teacher_2026-11'), { paid: 15000 }));
   await assertFails(getDoc(doc(db('learner'), 'academies/ac1/salaries/teacher_2026-11')));
   await assertSucceeds(getDocs(collection(owner, 'academies/ac1/students')));
+  const place = {
+    markedByUid: 'teacher',
+    mcId: 'MC100300',
+    date: '2026-11-24',
+    batchId: 'morning',
+    locationStatus: 'recorded',
+    address: 'Jayanagar, Bangalore',
+    lat: 12.93,
+    lng: 77.58,
+    accuracy: 15,
+    distanceMeters: 40,
+    away: false,
+    markedAt: now(),
+  };
+  await assertSucceeds(setDoc(doc(teacher, 'academies/ac1/attendancePlaces/morning_2026-11-24'), place));
+  await assertFails(setDoc(doc(teacher, 'academies/ac1/attendancePlaces/evening_2026-11-24'), {
+    ...place,
+    batchId: 'evening',
+  }));
+  await assertFails(updateDoc(doc(teacher, 'academies/ac1/attendancePlaces/morning_2026-11-24'), { away: true }));
+  await assertSucceeds(getDoc(doc(owner, 'academies/ac1/attendancePlaces/morning_2026-11-24')));
+  await assertFails(getDoc(doc(db('learner'), 'academies/ac1/attendancePlaces/morning_2026-11-24')));
 });
 
 test('follows, verification, chat, coupons, materials, and session requests', async () => {

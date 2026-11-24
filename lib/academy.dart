@@ -6,6 +6,7 @@ import 'app_theme.dart';
 import 'class_roster.dart';
 import 'firestore_database.dart';
 import 'member_id.dart';
+import 'attendance_place.dart';
 
 int feeTotal({
   required int unitAmount,
@@ -45,10 +46,10 @@ class AcademyPage extends StatelessWidget {
         final name = (data?['name'] ?? 'Academy').toString();
         final user = FirebaseAuth.instance.currentUser;
         final owner = user != null && data?['ownerId'] == user.uid;
-        if (teacherOnly && !owner) {
-          return TeacherAcademyView(academyId: academyId, name: name);
+        if (owner && !teacherOnly) {
+          return AcademyDashboard(academyId: academyId, name: name);
         }
-        return AcademyDashboard(academyId: academyId, name: name);
+        return TeacherAcademyView(academyId: academyId, name: name);
       },
     );
   }
@@ -67,7 +68,7 @@ class AcademyDashboard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
-      length: 4,
+      length: 5,
       child: Scaffold(
         appBar: AppBar(
           title: Text(name),
@@ -78,6 +79,7 @@ class AcademyDashboard extends StatelessWidget {
               Tab(text: 'Batches'),
               Tab(text: 'Students'),
               Tab(text: 'Summary'),
+              Tab(text: 'Attendance'),
             ],
           ),
         ),
@@ -87,6 +89,7 @@ class AcademyDashboard extends StatelessWidget {
             _BatchesTab(academyId: academyId),
             _StudentsTab(academyId: academyId),
             _SummaryTab(academyId: academyId),
+            AcademyAttendancePlaces(academyId: academyId),
           ],
         ),
       ),
@@ -791,6 +794,9 @@ class TeacherAcademyView extends StatelessWidget {
           builder: (context, setLocal) => Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              const Text(
+                'Your location is recorded when you mark attendance for this physical batch.',
+              ),
               for (final doc in students.docs)
                 SwitchListTile(
                   title: Text((doc.data()['name'] ?? doc.id).toString()),
@@ -819,6 +825,8 @@ class TeacherAcademyView extends StatelessWidget {
     final date =
         '${today.year}-${today.month.toString().padLeft(2, '0')}-${today.day.toString().padLeft(2, '0')}';
     final uid = FirebaseAuth.instance.currentUser?.uid ?? '';
+    final academy = await firestore.collection('academies').doc(academyId).get();
+    final info = academy.data() ?? const <String, dynamic>{};
     await firestore
         .collection('academies')
         .doc(academyId)
@@ -831,6 +839,14 @@ class TeacherAcademyView extends StatelessWidget {
           'authorId': uid,
           'teacherUid': uid,
         });
+    await saveAcademyAttendancePlace(
+      academyId: academyId,
+      batchId: batchId,
+      date: date,
+      placeLat: (info['lat'] as num?)?.toDouble(),
+      placeLng: (info['lng'] as num?)?.toDouble(),
+      placeAddress: (info['address'] ?? '').toString(),
+    );
   }
 
   Future<void> _announce(BuildContext context, String batchId) async {
@@ -960,18 +976,22 @@ class _InviteInbox extends StatelessWidget {
     return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
       stream: stream,
       builder: (context, snapshot) {
-        final docs = (snapshot.data?.docs ?? [])
+        final invited = (snapshot.data?.docs ?? [])
             .where((doc) => doc.data()['status'] == 'invited')
             .toList();
-        if (docs.isEmpty) return const SizedBox.shrink();
+        final teaching = (snapshot.data?.docs ?? [])
+            .where((doc) => doc.data()['status'] == 'accepted')
+            .toList();
+        if (invited.isEmpty && teaching.isEmpty) return const SizedBox.shrink();
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Academy invites',
-              style: Theme.of(context).textTheme.titleMedium,
-            ),
-            for (final doc in docs)
+            if (invited.isNotEmpty)
+              Text(
+                'Academy invites',
+                style: Theme.of(context).textTheme.titleMedium,
+              ),
+            for (final doc in invited)
               ListTile(
                 title: Text(
                   (doc.data()['academyName'] ?? 'Academy').toString(),
@@ -980,6 +1000,21 @@ class _InviteInbox extends StatelessWidget {
                 trailing: FilledButton(
                   onPressed: () => acceptAcademyInvite(doc),
                   child: const Text('Accept'),
+                ),
+              ),
+            for (final doc in teaching)
+              ListTile(
+                title: Text(
+                  (doc.data()['academyName'] ?? 'Academy').toString(),
+                ),
+                subtitle: const Text('Teacher view'),
+                trailing: TextButton(
+                  onPressed: () => openAcademy(
+                    context,
+                    (doc.data()['academyId'] ?? doc.id).toString(),
+                    teacher: true,
+                  ),
+                  child: const Text('Open'),
                 ),
               ),
           ],

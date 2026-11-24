@@ -67,7 +67,7 @@
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
   <key>NSLocationWhenInUseUsageDescription</key>
-  <string>Master Class uses your location to add a class venue and to show how far a physical class is.</string>
+  <string>Master Class uses your location to add a class venue, to show how far a physical class is, and to record where you are when you mark attendance for a physical class.</string>
   <key>NSCameraUsageDescription</key>
   <string>Master Class uses the camera so you can take a profile photo or a class photo.</string>
   <key>NSPhotoLibraryUsageDescription</key>
