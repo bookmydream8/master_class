@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 import 'firestore_database.dart';
+import 'attendance_place.dart';
 
 class Attendee {
   const Attendee({
@@ -349,6 +350,10 @@ class ClassRosterStore {
     required String status,
     required int feeAmount,
     required String feePeriod,
+    bool recordPlace = false,
+    double? placeLat,
+    double? placeLng,
+    String placeAddress = '',
   }) async {
     if (isDemo(listingId)) {
       final current = await load(
@@ -385,6 +390,15 @@ class ClassRosterStore {
       });
     } else {
       await ref.update({'marks.$attendeeKey': status});
+    }
+    if (recordPlace) {
+      await saveListingAttendancePlace(
+        listingId: listingId,
+        date: date,
+        placeLat: placeLat,
+        placeLng: placeLng,
+        placeAddress: placeAddress,
+      );
     }
   }
 

@@ -1,14 +1,17 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 
 import 'app_theme.dart';
+import 'attendance_place.dart';
 import 'category_style.dart';
 import 'class_batches.dart';
 import 'class_reminders.dart';
 import 'class_roster.dart';
-import 'upi_payment.dart';
 import 'firestore_database.dart';
+import 'madhura_board.dart' as board;
 import 'member_id.dart';
+import 'upi_payment.dart';
 
 int classFeeAmount(Map<String, dynamic> data) {
   final price = data['price'];
@@ -363,6 +366,13 @@ class _AttendancePageState extends State<AttendancePage> {
       status: status,
       feeAmount: current.feeAmount,
       feePeriod: current.feePeriod,
+      recordPlace: board.listingFormat(widget.listing) != 'online',
+      placeLat: (widget.listing['lat'] as num?)?.toDouble(),
+      placeLng: (widget.listing['lng'] as num?)?.toDouble(),
+      placeAddress: [
+        widget.listing['area'],
+        widget.listing['city'],
+      ].whereType<Object>().map((part) => part.toString()).where((part) => part.isNotEmpty).join(', '),
     );
     await _load();
   }
@@ -392,6 +402,24 @@ class _AttendancePageState extends State<AttendancePage> {
                       : 'Attendance for the people on your MC ID.',
                   style: text.bodyMedium?.copyWith(color: colors.muted),
                 ),
+                if (widget.asMaster && board.listingFormat(widget.listing) != 'online') ...[
+                  const SizedBox(height: 8),
+                  Text(attendanceLocationNotice, style: text.bodySmall),
+                  if (date != null)
+                    StreamBuilder<DocumentSnapshot<Map<String, dynamic>>>(
+                      stream: firestore
+                          .collection('listings')
+                          .doc(listingId)
+                          .collection('attendancePlaces')
+                          .doc(date)
+                          .snapshots(),
+                      builder: (context, snapshot) {
+                        final place = snapshot.data?.data();
+                        if (place == null) return const SizedBox.shrink();
+                        return AttendancePlaceCard(data: place);
+                      },
+                    ),
+                ],
                 const SizedBox(height: 12),
                 if (batches.isNotEmpty)
                   SizedBox(

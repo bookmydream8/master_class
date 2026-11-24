@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'admin_moderation.dart';
 import 'app_theme.dart';
+import 'category_style.dart';
 import 'class_announcements.dart';
 import 'class_batches.dart';
 import 'class_interest_sheet.dart';
@@ -18,6 +19,8 @@ import 'class_roster_pages.dart';
 import 'firestore_database.dart';
 import 'learner_badges.dart';
 import 'madhura_board.dart' as board;
+import 'spark_logic.dart';
+import 'spark_pages.dart';
 
 void showMasterClassDetails(BuildContext context, Map<String, dynamic> data) {
   Navigator.of(
@@ -114,6 +117,13 @@ class MasterClassDetailPage extends StatelessWidget {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Review verification',
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const AdminVerificationPage()),
+            ),
+            icon: const Icon(Icons.verified_outlined),
+          ),
           AdminDeletePostButton(listingId: listingId, title: title),
           IconButton(
             tooltip: 'Copy listing title',
@@ -182,6 +192,26 @@ class MasterClassDetailPage extends StatelessWidget {
                   title,
                   style: text.headlineSmall?.copyWith(color: colors.ink),
                 ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    VerifiedBadge(verified: data['verifiedMaster'] == true),
+                    FollowButton(
+                      masterId: (data['creatorId'] ?? '').toString(),
+                      masterName: (data['creatorName'] ?? 'Master').toString(),
+                    ),
+                    FollowerCount(masterId: (data['creatorId'] ?? '').toString()),
+                    SharePosterButton(
+                      title: title,
+                      subtitle: (data['creatorName'] ?? 'Master').toString(),
+                      detail: '${board.listingPrice(data)} · ${place.isEmpty ? 'Online' : place}',
+                      link: classShareLink((data['id'] ?? '').toString()),
+                      color: categoryStyleFor(data).tint,
+                    ),
+                  ],
+                ),
                 const SizedBox(height: 18),
                 Row(
                   children: [
@@ -217,6 +247,15 @@ class MasterClassDetailPage extends StatelessWidget {
                   _Section('SUITABLE AGE GROUP', ageGroup),
                 if (expiryDate.isNotEmpty)
                   _Section('LISTING EXPIRES', expiryDate),
+                PolicyNote(listing: data),
+                if (listingId.isNotEmpty) ...[
+                  MaterialsButton(listing: data),
+                  GalleryButton(listing: data),
+                  ChatButton(listing: data),
+                  SessionRequestButton(listing: data),
+                  if (isOwner) CouponEditor(listingId: listingId),
+                  if (isOwner) SessionRequestList(listingId: listingId),
+                ],
                 if (classSupportsRoster(format)) ...[
                   const SizedBox(height: 4),
                   CertificateButton(listing: data),

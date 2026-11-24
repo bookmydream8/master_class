@@ -32,6 +32,40 @@ Future<void> openCommunityPost(
   );
 }
 
+String feeOfferLabel(int amount, String period) {
+  final unit = switch (period) {
+    'class' => '/ class',
+    'once' => ' one-time',
+    _ => '/ month',
+  };
+  return '₹$amount$unit';
+}
+
+String _masterSummary(List<QueryDocumentSnapshot<Map<String, dynamic>>> masters) {
+  final priced = masters.where((doc) => doc.data()['feeAmount'] is num).toList();
+  if (priced.isEmpty) {
+    return '${masters.length} master${masters.length == 1 ? '' : 's'} accepted';
+  }
+  final lowest = lowestMasterFee(priced);
+  final period = priced
+          .where((doc) => (doc.data()['feeAmount'] as num).toInt() == lowest)
+          .map((doc) => (doc.data()['feePeriod'] ?? 'month').toString())
+          .firstOrNull ??
+      'month';
+  return 'From ${feeOfferLabel(lowest, period)}';
+}
+
+int lowestMasterFee(Iterable<QueryDocumentSnapshot<Map<String, dynamic>>> masters) {
+  final amounts = masters
+      .map((doc) => doc.data()['feeAmount'])
+      .whereType<num>()
+      .map((amount) => amount.toInt())
+      .toList();
+  if (amounts.isEmpty) return 0;
+  amounts.sort();
+  return amounts.first;
+}
+
 String communityPublicName(Object? value) {
   final name = (value ?? '').toString().trim();
   if (name.isEmpty || name.contains('@')) return 'Member';
@@ -58,6 +92,9 @@ class _CommunityPostFormState extends State<CommunityPostForm> {
   final description = TextEditingController();
   final city = TextEditingController();
   final area = TextEditingController();
+  final preferredBudget = TextEditingController();
+  final preferredTiming = TextEditingController();
+  String preferredFeePeriod = 'month';
   String requestMode = 'online';
   bool saving = false;
   String? error;
@@ -82,6 +119,8 @@ class _CommunityPostFormState extends State<CommunityPostForm> {
     description.dispose();
     city.dispose();
     area.dispose();
+    preferredBudget.dispose();
+    preferredTiming.dispose();
     super.dispose();
   }
 
@@ -154,6 +193,11 @@ class _CommunityPostFormState extends State<CommunityPostForm> {
           'creatorName': communityPublicName(user.displayName),
           if (city.text.trim().isNotEmpty) 'city': city.text.trim(),
           if (!isPoll && requestMode == 'physical') 'area': area.text.trim(),
+          if (!isPoll && preferredBudget.text.trim().isNotEmpty)
+            'preferredBudget': int.tryParse(preferredBudget.text.trim()) ?? 0,
+          if (!isPoll) 'preferredFeePeriod': preferredFeePeriod,
+          if (!isPoll && preferredTiming.text.trim().isNotEmpty)
+            'preferredTiming': preferredTiming.text.trim(),
           if (isPoll) 'poll_options': const ['Vote +'],
           'createdAt': now,
           'updatedAt': now,
@@ -276,6 +320,26 @@ class _CommunityPostFormState extends State<CommunityPostForm> {
               labelText: 'Area / nearby locality *',
             ),
           ),
+        if (!isPoll) ...[
+          TextField(
+            controller: preferredBudget,
+            keyboardType: TextInputType.number,
+            decoration: const InputDecoration(labelText: 'Preferred budget (optional)'),
+          ),
+          DropdownButtonFormField<String>(
+            initialValue: preferredFeePeriod,
+            items: const [
+              DropdownMenuItem(value: 'month', child: Text('Per month')),
+              DropdownMenuItem(value: 'class', child: Text('Per class')),
+              DropdownMenuItem(value: 'once', child: Text('One-time')),
+            ],
+            onChanged: (value) => setState(() => preferredFeePeriod = value ?? 'month'),
+          ),
+          TextField(
+            controller: preferredTiming,
+            decoration: const InputDecoration(labelText: 'Preferred timing (optional)'),
+          ),
+        ],
         if (error != null)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),
@@ -401,7 +465,18 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
       error = null;
     });
     try {
+      int? feeAmount;
+      String? feePeriod;
+      String? timing;
       if (!isPoll && status == 'master_ready' && !remove) {
+        final offer = await _askOffer();
+        if (offer == null) {
+          if (mounted) setState(() => working = false);
+          return;
+        }
+        feeAmount = offer.$1;
+        feePeriod = offer.$2;
+        timing = offer.$3;
         final accepted = await firestore
             .collection('community_responses')
             .doc(widget.listingId)
@@ -446,6 +521,9 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
             'contactNumber': profile!['phoneNumber'],
           'status': status,
           'updatedAt': DateTime.now().toUtc().toIso8601String(),
+          'feeAmount': ?feeAmount,
+          'feePeriod': ?feePeriod,
+          'timing': ?timing,
         });
         batch.set(publicRef, {
           'listingId': widget.listingId,
@@ -453,6 +531,9 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
           'userId': current.uid,
           'userName': displayName,
           'status': status,
+          'feeAmount': ?feeAmount,
+          'feePeriod': ?feePeriod,
+          'timing': ?timing,
         });
       }
       await batch.commit();
@@ -487,6 +568,63 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
     } finally {
       if (mounted) setState(() => working = false);
     }
+  }
+
+  Future<(int, String, String)?> _askOffer() async {
+    final amount = TextEditingController();
+    final timingField = TextEditingController();
+    var period = 'month';
+    final offer = await showDialog<(int, String, String)>(
+      context: context,
+      builder: (dialog) => StatefulBuilder(
+        builder: (context, setLocal) => AlertDialog(
+          title: const Text('Your fee and timing'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: amount,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: 'Fee in rupees'),
+              ),
+              DropdownButtonFormField<String>(
+                initialValue: period,
+                items: const [
+                  DropdownMenuItem(value: 'month', child: Text('Per month')),
+                  DropdownMenuItem(value: 'class', child: Text('Per class')),
+                  DropdownMenuItem(value: 'once', child: Text('One-time')),
+                ],
+                onChanged: (value) => setLocal(() => period = value ?? 'month'),
+              ),
+              TextField(
+                controller: timingField,
+                decoration: const InputDecoration(
+                  labelText: 'Days and time',
+                  hintText: 'Tue, Thu · 6 pm, or a short note',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialog),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              onPressed: () {
+                final fee = int.tryParse(amount.text.trim());
+                if (fee == null || fee < 0 || timingField.text.trim().isEmpty) return;
+                Navigator.pop(dialog, (fee, period, timingField.text.trim()));
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+    amount.dispose();
+    timingField.dispose();
+    return offer;
   }
 
   @override
@@ -545,6 +683,12 @@ class _CommunityDetailPageState extends State<CommunityDetailPage> {
             const SizedBox(height: 6),
             Text('Area: ${widget.data['area']}'),
           ],
+          if ((widget.data['preferredTiming'] ?? '').toString().isNotEmpty)
+            Text('Preferred timing: ${widget.data['preferredTiming']}'),
+          if (widget.data['preferredBudget'] != null)
+            Text(
+              'Preferred budget: ${feeOfferLabel((widget.data['preferredBudget'] as num).toInt(), (widget.data['preferredFeePeriod'] ?? 'month').toString())}',
+            ),
           const SizedBox(height: 18),
           CommunityActivity(
             listingId: widget.listingId,
@@ -727,7 +871,7 @@ class CommunityActivity extends StatelessWidget {
             subtitle: isPoll
                 ? null
                 : Text(
-                    '${masters.length} master${masters.length == 1 ? '' : 's'} accepted',
+                    _masterSummary(masters),
                     style: const TextStyle(fontSize: 11, color: board.muted),
                   ),
             children: [
@@ -877,7 +1021,15 @@ class _CommunityPerson extends StatelessWidget {
       return Padding(
         padding: const EdgeInsets.only(top: 5),
         child: Text(
-          name,
+          [
+            name,
+            if (data['feeAmount'] != null)
+              feeOfferLabel(
+                (data['feeAmount'] as num).toInt(),
+                (data['feePeriod'] ?? 'month').toString(),
+              ),
+            if ((data['timing'] ?? '').toString().isNotEmpty) data['timing'],
+          ].join(' · '),
           style: const TextStyle(fontSize: 12, color: board.ink),
         ),
       );
@@ -897,6 +1049,11 @@ class _CommunityPerson extends StatelessWidget {
                 name,
                 style: const TextStyle(fontSize: 12, color: board.ink),
               ),
+              if (data['feeAmount'] != null)
+                Text(
+                  '${feeOfferLabel((data['feeAmount'] as num).toInt(), (data['feePeriod'] ?? 'month').toString())} · ${data['timing'] ?? ''}',
+                  style: const TextStyle(fontSize: 11, color: board.muted),
+                ),
               if (email.isNotEmpty || phone.isNotEmpty)
                 Text(
                   [email, phone].where((part) => part.isNotEmpty).join(' · '),

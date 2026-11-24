@@ -216,6 +216,25 @@ exports.onlineExpiryReminders = onSchedule({ schedule: '30 3 * * *', timeZone: '
   }
 });
 
+// Inbox push is optional and stays off while the project is on Spark.
+// If you later deploy functions, this sends FCM when an inbox note is created.
+exports.inboxPush = onDocumentCreated('profiles/{uid}/notifications/{noteId}', async (event) => {
+  const data = event.data ? event.data.data() : null;
+  if (!data || data.pushSent === true) return;
+  const uid = event.params.uid;
+  if (!uid || String(uid).startsWith('demo_')) return;
+  const profile = await getFirestore().collection('profiles').doc(uid).get();
+  const tokens = profile.get('fcmTokens') || [];
+  if (!Array.isArray(tokens) || tokens.length === 0) return;
+  await getMessaging().sendEachForMulticast({
+    tokens,
+    notification: {
+      title: data.title || 'Master Class',
+      body: data.body || '',
+    },
+  });
+});
+
 exports.announce = onDocumentCreated('listings/{listingId}/announcements/{announcementId}', async (event) => {
   const data = event.data ? event.data.data() : null;
   if (!data) return;

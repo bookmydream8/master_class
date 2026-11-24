@@ -19,6 +19,7 @@ import 'class_reminders.dart';
 import 'listing_expiry.dart';
 import 'madhura_board.dart' as board;
 import 'profile_photo.dart';
+import 'spark_pages.dart';
 
 const spokenLanguageOptions = <String>[
   'English',
@@ -75,6 +76,7 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
   final area = TextEditingController();
   bool isFree = true;
   bool asAcademy = false;
+  bool makeupAllowed = false;
   String feePeriod = 'month';
   bool saving = false;
   bool locating = false;
@@ -98,6 +100,8 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
   final landmark = TextEditingController();
   final sessionLink = TextEditingController();
   final contactNumber = TextEditingController();
+  final cancelHours = TextEditingController(text: '24');
+  final refundPolicy = TextEditingController();
   final customCategory = TextEditingController();
   final customSubcategory = TextEditingController();
 
@@ -274,6 +278,8 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
       customCategory,
       customSubcategory,
       customSpokenLanguage,
+      cancelHours,
+      refundPolicy,
     ]) {
       controller.dispose();
     }
@@ -523,6 +529,11 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
             if (format == 'online') 'topic': focus ?? category,
             'creatorId': user.uid,
             'creatorName': user.displayName ?? 'Class master',
+            'cancelByHours': int.tryParse(cancelHours.text.trim()) ?? 24,
+            'refundPolicy': refundPolicy.text.trim().isEmpty
+                ? 'Ask the master before paying.'
+                : refundPolicy.text.trim(),
+            'makeupAllowed': makeupAllowed,
             'createdAt': now.toIso8601String(),
             'updatedAt': now.toIso8601String(),
           })
@@ -557,6 +568,11 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
           expiresAt: resolvedExpiry,
         );
       }
+      await notifyFollowersOfPost(
+        masterId: user.uid,
+        title: title.text.trim(),
+        kindLabel: format,
+      );
       if (format == 'physical' && asAcademy) {
         final address = [
           area.text.trim(),
@@ -663,6 +679,26 @@ class _MasterClassPostFormState extends State<MasterClassPostForm> {
                     value: asAcademy,
                     onChanged: (value) => setState(() => asAcademy = value),
                   ),
+                TextField(
+                  controller: cancelHours,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Cancel at least this many hours before',
+                  ),
+                ),
+                TextField(
+                  controller: refundPolicy,
+                  decoration: const InputDecoration(
+                    labelText: 'Refund note',
+                    hintText: 'Full refund if cancelled in time, or no refund',
+                  ),
+                ),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Makeup class allowed'),
+                  value: makeupAllowed,
+                  onChanged: (value) => setState(() => makeupAllowed = value),
+                ),
               ],
             ),
           ),

@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'app_theme.dart';
 import 'class_roster.dart';
 import 'firestore_database.dart';
+import 'spark_pages.dart';
 
 String upiLink({
   required String upiId,
@@ -224,15 +225,24 @@ class UpiPayPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (fee.pending <= 0) return const SizedBox.shrink();
-    return Align(
-      alignment: Alignment.centerLeft,
-      child: TextButton.icon(
-        onPressed: () => _pay(context),
-        icon: const Icon(Icons.account_balance_wallet_outlined),
-        label: Text(
-          fee.utrStatus == 'submitted' ? 'UTR sent · pay again' : 'Pay via UPI',
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        CouponBox(
+          listingId: (listing['id'] ?? '').toString(),
+          amount: fee.pending,
         ),
-      ),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton.icon(
+            onPressed: () => _pay(context),
+            icon: const Icon(Icons.account_balance_wallet_outlined),
+            label: Text(
+              fee.utrStatus == 'submitted' ? 'UTR sent · pay again' : 'Pay via UPI',
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

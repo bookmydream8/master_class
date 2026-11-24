@@ -15,10 +15,12 @@ import 'events_page.dart';
 import 'home_catalogue.dart';
 import 'home_illustrations.dart';
 import 'profile_photo.dart';
+import 'spark_pages.dart';
 import 'language_section.dart';
 import 'nearby_map.dart';
 import 'notification_inbox.dart';
 import 'wishlist.dart';
+import 'masters_page.dart';
 import 'member_id.dart';
 import 'master_class_app.dart' show showPostSheet;
 import 'seed/bangalore_demo.dart';
@@ -970,10 +972,33 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
             decoration: InputDecoration(
               hintText: 'Search music, yoga, languages…',
               prefixIcon: Icon(Icons.search, color: colors.muted),
+              suffixIcon: IconButton(
+                tooltip: 'Search masters',
+                onPressed: () {
+                  openMasterListing = showMasterClassDetails;
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const MastersPage()),
+                  );
+                },
+                icon: const Icon(Icons.person_search),
+              ),
             ),
           ),
         ),
         const SizedBox(height: 16),
+        _quickLink(
+          context,
+          art: 'masters',
+          title: 'Masters',
+          subtitle: 'A mix of teachers, then search by skill or city',
+          onTap: () {
+            openMasterListing = showMasterClassDetails;
+            Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const MastersPage()),
+            );
+          },
+        ),
+        const SizedBox(height: 12),
         _quickLink(
           context,
           art: 'upcoming_events',
@@ -986,6 +1011,27 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
           ),
         ),
         const SizedBox(height: 12),
+        NextUpCard(
+          listings: _homeCatalogue(),
+          onOpen: (data) => showMasterClassDetails(context, data),
+        ),
+        const SizedBox(height: 8),
+        _quickLink(
+          context,
+          art: 'curriculum',
+          title: 'My schedule',
+          subtitle: 'This week, with a calendar file to share',
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => MySchedulePage(listings: _homeCatalogue()),
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        FollowingRail(
+          listings: _homeCatalogue(),
+          onOpen: (data) => showMasterClassDetails(context, data),
+        ),
         PromoCarousel(onOpen: _openBrowse),
         const SizedBox(height: 18),
         LearnYourWay(listings: _homeCatalogue(), onOpen: _openBrowse),
