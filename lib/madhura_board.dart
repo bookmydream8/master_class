@@ -889,103 +889,21 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
   }
 
   Widget _buildHome(BuildContext context) {
-    final name = FirebaseAuth.instance.currentUser?.displayName
-        ?.split(' ')
-        .first;
-    final colors = AppPalette.of(context);
-    final text = Theme.of(context).textTheme;
     return ListView(
-      padding: const EdgeInsets.fromLTRB(18, 12, 18, 96),
+      padding: const EdgeInsets.fromLTRB(20, 0, 20, 100),
       children: [
-        Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(14),
-              child: Image.asset(
-                'logo.png',
-                width: 40,
-                height: 40,
-                fit: BoxFit.cover,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'MASTER CLASS',
-                    style: text.labelSmall?.copyWith(
-                      color: colors.muted,
-                      letterSpacing: 1.1,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Row(
-                    children: [
-                      Icon(Icons.location_on, size: 18, color: colors.accent),
-                      const SizedBox(width: 2),
-                      Flexible(
-                        child: Text(
-                          savedPhysicalCity,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: text.titleLarge?.copyWith(color: colors.ink),
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (memberId.isNotEmpty) ...[
-                    const SizedBox(height: 6),
-                    McIdBanner(mcId: memberId, compact: true),
-                  ],
-                ],
-              ),
-            ),
-            IconButton(
-              tooltip: 'Notifications',
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (_) => const NotificationInboxPage(),
-                ),
-              ),
-              icon: Icon(Icons.notifications_none, color: colors.ink),
-            ),
-            Semantics(
-              button: true,
-              label: 'Open profile',
-              child: InkWell(
-                onTap: () => _selectTab(3),
-                customBorder: const CircleBorder(),
-                child: _HomeAvatar(name: name ?? 'M'),
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 16),
-        Semantics(
-          button: true,
-          label: 'Search classes',
-          child: TextField(
-            readOnly: true,
-            onTap: () => _openBrowse('online'),
-            decoration: InputDecoration(
-              hintText: 'Search music, yoga, languages…',
-              prefixIcon: Icon(Icons.search, color: colors.muted),
-              suffixIcon: IconButton(
-                tooltip: 'Search masters',
-                onPressed: () {
-                  openMasterListing = showMasterClassDetails;
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const MastersPage()),
-                  );
-                },
-                icon: const Icon(Icons.person_search),
-              ),
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
+        _homeHeader(context),
+        const SizedBox(height: 18),
+        _homeSearch(context),
+        const SizedBox(height: 24),
+        LearnYourWay(listings: _homeCatalogue(), onOpen: _openBrowse),
+        const SizedBox(height: 24),
+        _homeDivider(context),
+        const SizedBox(height: 22),
+        StartingThisWeek(onOpen: _openBrowse),
+        const SizedBox(height: 24),
+        _homeDivider(context),
+        const SizedBox(height: 22),
         _quickLink(
           context,
           art: 'masters',
@@ -993,9 +911,8 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
           subtitle: 'A mix of teachers, then search by skill or city',
           onTap: () {
             openMasterListing = showMasterClassDetails;
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (_) => const MastersPage()),
-            );
+            Navigator.of(context)
+                .push(MaterialPageRoute(builder: (_) => const MastersPage()));
           },
         ),
         const SizedBox(height: 12),
@@ -1032,17 +949,6 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
           listings: _homeCatalogue(),
           onOpen: (data) => showMasterClassDetails(context, data),
         ),
-        PromoCarousel(onOpen: _openBrowse),
-        const SizedBox(height: 18),
-        LearnYourWay(listings: _homeCatalogue(), onOpen: _openBrowse),
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: _openMap,
-            icon: const HomeIllustration('map', size: 28),
-            label: const Text('Physical classes on a map'),
-          ),
-        ),
         const SizedBox(height: 22),
         DemoClassesSoon(
           listings: _homeCatalogue(),
@@ -1059,15 +965,6 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
         const SizedBox(height: 22),
         _communityEntry(
           context,
-          art: 'demo_votes',
-          title: 'Demo class votes',
-          subtitle: 'Help choose the next class to try.',
-          kind: 'demo_poll',
-          onTap: () => openDemoClasses(context),
-        ),
-        const SizedBox(height: 12),
-        _communityEntry(
-          context,
           art: 'request_class',
           title: 'Request a class',
           subtitle: 'Ask the community for a class you want.',
@@ -1078,7 +975,111 @@ class _MasterClassBoardState extends State<MasterClassBoard> {
         HomeCatalogue(
           onOpen: (data) => showMasterClassDetails(context, data),
           onSeeAll: () => _openBrowse('online'),
+          showStats: false,
         ),
+      ],
+    );
+  }
+
+  Widget _homeHeader(BuildContext context) {
+    final colors = AppPalette.of(context);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 6, 20, 16),
+      decoration: BoxDecoration(
+        color: colors.card,
+        border: Border(bottom: BorderSide(color: colors.line)),
+      ),
+      child: Column(
+        children: [
+          SizedBox(
+            height: 104,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                Center(
+                  child: Image.asset(
+                    'assets/images/master-class.png',
+                    width: 178,
+                    height: 96,
+                    fit: BoxFit.contain,
+                  ),
+                ),
+                Positioned(
+                  right: 0,
+                  top: 6,
+                  child: IconButton(
+                    tooltip: 'Notifications',
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const NotificationInboxPage(),
+                      ),
+                    ),
+                    icon: Icon(Icons.notifications_none, color: colors.ink),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 5),
+          const HomeHeaderStats(),
+        ],
+      ),
+    );
+  }
+
+  Widget _homeSearch(BuildContext context) {
+    final colors = AppPalette.of(context);
+    return Material(
+      color: colors.card,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: () => _openBrowse('online'),
+        borderRadius: BorderRadius.circular(16),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+          child: Row(
+            children: [
+              Icon(Icons.search, color: colors.accent),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'Search music, yoga, languages…',
+                  style: Theme.of(context).textTheme.bodyMedium
+                      ?.copyWith(color: colors.muted),
+                ),
+              ),
+              IconButton(
+                tooltip: 'Search masters',
+                onPressed: () {
+                  openMasterListing = showMasterClassDetails;
+                  Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const MastersPage()),
+                  );
+                },
+                icon: Icon(Icons.person_search, color: colors.muted),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _homeDivider(BuildContext context) {
+    final colors = AppPalette.of(context);
+    return Row(
+      children: [
+        Expanded(child: Divider(color: colors.line)),
+        Container(
+          margin: const EdgeInsets.symmetric(horizontal: 10),
+          width: 7,
+          height: 7,
+          decoration: BoxDecoration(
+            color: colors.accent,
+            shape: BoxShape.circle,
+          ),
+        ),
+        Expanded(child: Divider(color: colors.line)),
       ],
     );
   }

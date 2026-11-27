@@ -13,14 +13,14 @@ class _LanguageCard {
 }
 
 const _languageCards = <_LanguageCard>[
-  _LanguageCard('English', 'English', 'language'),
-  _LanguageCard('Hindi', 'हिन्दी', 'language'),
   _LanguageCard('Kannada', 'ಕನ್ನಡ', 'language'),
+  _LanguageCard('Hindi', 'हिन्दी', 'language'),
+  _LanguageCard('German', 'Deutsch', 'foreign_languages'),
+  _LanguageCard('English', 'English', 'language'),
   _LanguageCard('Tamil', 'தமிழ்', 'language'),
   _LanguageCard('Telugu', 'తెలుగు', 'language'),
   _LanguageCard('Malayalam', 'മലയാളം', 'language'),
   _LanguageCard('French', 'Français', 'foreign_languages'),
-  _LanguageCard('German', 'Deutsch', 'foreign_languages'),
   _LanguageCard('Spanish', 'Español', 'foreign_languages'),
   _LanguageCard('Japanese', '日本語', 'foreign_languages'),
   _LanguageCard('Korean', '한국어', 'foreign_languages'),

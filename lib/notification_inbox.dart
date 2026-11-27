@@ -68,25 +68,22 @@ class NotificationInboxPage extends StatelessWidget {
                   );
                 }
                 return ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-                  itemCount: docs.length,
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
+                  itemCount: docs.length + 1,
                   separatorBuilder: (_, _) => const SizedBox(height: 8),
                   itemBuilder: (context, index) {
-                    final data = docs[index].data();
-                    return Container(
-                      padding: const EdgeInsets.all(14),
-                      decoration: appCardDecoration(context, radius: 16),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            (data['title'] ?? 'Notice').toString(),
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
-                          const SizedBox(height: 4),
-                          Text((data['body'] ?? '').toString()),
-                        ],
-                      ),
+                    if (index == 0) {
+                      return AppPageIntro(
+                        eyebrow: 'Inbox',
+                        title: 'Keep up to date',
+                        description: 'Class updates, reminders, and announcements.',
+                      );
+                    }
+                    final data = docs[index - 1].data();
+                    return AppActionTile(
+                      icon: Icons.notifications_none,
+                      title: (data['title'] ?? 'Notice').toString(),
+                      subtitle: (data['body'] ?? '').toString(),
                     );
                   },
                 );

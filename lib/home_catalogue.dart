@@ -90,7 +90,11 @@ class CourseCard extends StatelessWidget {
                     const Positioned(
                       right: 48,
                       top: 10,
-                      child: Icon(Icons.verified, color: Colors.white, size: 20),
+                      child: Icon(
+                        Icons.verified,
+                        color: Colors.white,
+                        size: 20,
+                      ),
                     ),
                   Positioned(
                     right: 8,
@@ -488,10 +492,12 @@ class HomeCatalogue extends StatelessWidget {
     super.key,
     required this.onOpen,
     required this.onSeeAll,
+    this.showStats = true,
   });
 
   final ValueChanged<Map<String, dynamic>> onOpen;
   final VoidCallback onSeeAll;
+  final bool showStats;
 
   @override
   Widget build(BuildContext context) {
@@ -520,10 +526,12 @@ class HomeCatalogue extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _StatStrip(learners: learners, masters: masters),
-            const SizedBox(height: 22),
+            if (showStats) ...[
+              _StatStrip(learners: learners, masters: masters),
+              const SizedBox(height: 22),
+            ],
             AppSectionHeader(
-              title: 'New this month',
+              title: 'New This Month',
               subtitle:
                   'Posted in ${DateTime.now().month == 11 ? 'November' : 'the last few weeks'}',
               action: 'See all',
@@ -533,7 +541,7 @@ class HomeCatalogue extends StatelessWidget {
             _Rail(items: fresh.take(12).toList(), onOpen: onOpen),
             const SizedBox(height: 22),
             AppSectionHeader(
-              title: 'Top 10 most joined',
+              title: 'Top 10 Most Joined Classes',
               subtitle: 'Ranked by learners who joined',
               action: 'See all',
               onAction: onSeeAll,
@@ -543,6 +551,106 @@ class HomeCatalogue extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// Live learner and master totals, designed for the Home header.
+class HomeHeaderStats extends StatelessWidget {
+  const HomeHeaderStats({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<QuerySnapshot<Map<String, dynamic>>>(
+      stream: firestore.collection('listings').limit(40).snapshots(),
+      builder: (context, snapshot) {
+        final live = (snapshot.data?.docs ?? [])
+            .map((doc) => {...doc.data(), 'id': doc.id})
+            .toList();
+        final source = catalogueOrDemo(live);
+        return Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _HeaderStat(value: learnerCount(source), label: 'Learners'),
+            Container(width: 1, height: 24, color: AppPalette.of(context).line),
+            _HeaderStat(value: masterCount(source), label: 'Masters'),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _HeaderStat extends StatelessWidget {
+  const _HeaderStat({required this.value, required this.label});
+
+  final int value;
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final text = Theme.of(context).textTheme;
+    final colors = AppPalette.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 22),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('$value', style: text.titleMedium?.copyWith(color: colors.ink)),
+          const SizedBox(height: 1),
+          Text(label, style: text.labelSmall?.copyWith(color: colors.muted)),
+        ],
+      ),
+    );
+  }
+}
+
+/// Two matching quick links for classes that are about to begin.
+class StartingThisWeek extends StatelessWidget {
+  const StartingThisWeek({super.key, required this.onOpen});
+
+  final ValueChanged<String> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    const style = CategoryStyle(
+      tint: Color(0xFFEDE8FF),
+      ink: Color(0xFF4526AA),
+      icon: Icons.auto_stories_outlined,
+      gradient: [Color(0xFFEDE8FF), Color(0xFFDCD2FF)],
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AppSectionHeader(
+          title: 'Classes starting this week',
+          subtitle: 'Plan your next session early',
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 168,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            children: [
+              _FormatTile(
+                title: 'Classes',
+                countLabel: 'Browse classes',
+                icon: Icons.school_outlined,
+                style: style,
+                onTap: () => onOpen('online'),
+              ),
+              const SizedBox(width: 12),
+              _FormatTile(
+                title: 'Competitions',
+                countLabel: 'See what is next',
+                icon: Icons.emoji_events_outlined,
+                style: style,
+                onTap: () => onOpen('competition'),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

@@ -580,8 +580,14 @@ class _ProfilePageState extends State<ProfilePage> {
     body: loading
         ? const Center(child: CircularProgressIndicator())
         : ListView(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
             children: [
+              const AppPageIntro(
+                eyebrow: 'Your account',
+                title: 'Profile',
+                description: 'Your learning identity, preferences, and classes in one place.',
+              ),
+              const SizedBox(height: 14),
               if (mcId.isNotEmpty) ...[
                 McIdBanner(mcId: mcId),
                 const SizedBox(height: 14),
@@ -589,7 +595,7 @@ class _ProfilePageState extends State<ProfilePage> {
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(16),
-                decoration: appCardDecoration(context, radius: 20),
+                decoration: appCardDecoration(context, radius: 16),
                 child: Column(
                   children: [
                     ProfileAvatar(
@@ -647,7 +653,7 @@ class _ProfilePageState extends State<ProfilePage> {
               const SizedBox(height: 18),
               Container(
                 padding: const EdgeInsets.all(16),
-                decoration: appCardDecoration(context, radius: 20),
+                decoration: appCardDecoration(context, radius: 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -693,7 +699,7 @@ class _ProfilePageState extends State<ProfilePage> {
               const SizedBox(height: 14),
               Container(
                 padding: const EdgeInsets.all(16),
-                decoration: appCardDecoration(context, radius: 20),
+                decoration: appCardDecoration(context, radius: 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -715,7 +721,7 @@ class _ProfilePageState extends State<ProfilePage> {
                             : expertDetails.text.trim(),
                         style: TextStyle(
                           height: 1.45,
-                          fontSize: 14,
+                          fontSize: 13,
                           color: expertDetails.text.trim().isEmpty
                               ? AppPalette.of(context).muted
                               : AppPalette.of(context).ink,
@@ -727,7 +733,7 @@ class _ProfilePageState extends State<ProfilePage> {
               const SizedBox(height: 14),
               Container(
                 padding: const EdgeInsets.all(16),
-                decoration: appCardDecoration(context, radius: 20),
+                decoration: appCardDecoration(context, radius: 16),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -843,7 +849,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: colors.accentSoft,
-                      borderRadius: BorderRadius.circular(20),
+                      borderRadius: BorderRadius.circular(16),
                     ),
                     child: Row(
                       children: [

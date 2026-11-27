@@ -123,17 +123,22 @@ class SavedClassesPage extends StatelessWidget {
             );
           }
           return ListView.separated(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-            itemCount: saved.length,
+            padding: const EdgeInsets.fromLTRB(20, 18, 20, 28),
+            itemCount: saved.length + 1,
             separatorBuilder: (_, _) => const SizedBox(height: 8),
             itemBuilder: (context, index) {
-              final data = saved[index];
-              return ListTile(
-                tileColor: AppPalette.of(context).card,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                title: Text((data['title'] ?? 'Class').toString()),
-                subtitle: Text((data['creatorName'] ?? '').toString()),
-                trailing: const Icon(Icons.chevron_right),
+              if (index == 0) {
+                return AppPageIntro(
+                  eyebrow: 'Your shortlist',
+                  title: 'Saved classes',
+                  description: '${saved.length} ${saved.length == 1 ? 'class' : 'classes'} ready when you are.',
+                );
+              }
+              final data = saved[index - 1];
+              return AppActionTile(
+                icon: Icons.bookmark_outline,
+                title: (data['title'] ?? 'Class').toString(),
+                subtitle: (data['creatorName'] ?? 'Master Class').toString(),
                 onTap: () => onOpen(data),
               );
             },

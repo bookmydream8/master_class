@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Calm studio palette for Master Class.
+/// A crisp, editorial learning-marketplace palette.
 ///
-/// Light surfaces with one muted teal accent. Text and button colours are
-/// chosen to stay at or above WCAG AA contrast (4.5:1 for text, 3:1 for UI).
+/// The app deliberately uses a warm paper canvas, ink-heavy type and one vivid
+/// action colour. This keeps dense browse screens quiet while making booking
+/// and publishing actions immediately scannable.
 @immutable
 class AppPalette extends ThemeExtension<AppPalette> {
   const AppPalette({
@@ -48,22 +49,22 @@ class AppPalette extends ThemeExtension<AppPalette> {
       Theme.of(context).extension<AppPalette>()!;
 
   static const light = AppPalette(
-    canvas: Color(0xFFF7F8F5),
+    canvas: Color(0xFFF8F7F4),
     card: Color(0xFFFFFFFF),
-    ink: Color(0xFF202923),
-    muted: Color(0xFF626D66),
-    line: Color(0xFFE5E9E2),
-    accent: Color(0xFF235B4D),
+    ink: Color(0xFF151A2D),
+    muted: Color(0xFF687083),
+    line: Color(0xFFE7E7EC),
+    accent: Color(0xFF5B36D6),
     onAccent: Color(0xFFFFFFFF),
-    accentSoft: Color(0xFFE8F1EC),
-    onAccentSoft: Color(0xFF194738),
-    onlineWell: Color(0xFFE8F1EC),
-    physicalWell: Color(0xFFEAF0E7),
-    competitionWell: Color(0xFFF5F0E4),
-    eventWell: Color(0xFFEBEFF4),
-    wellInk: Color(0xFF244B3E),
-    imageFallback: Color(0xFFE8EEE8),
-    shadow: Color(0x14182428),
+    accentSoft: Color(0xFFEEE9FF),
+    onAccentSoft: Color(0xFF4526AA),
+    onlineWell: Color(0xFFE9F1FF),
+    physicalWell: Color(0xFFE7F6EF),
+    competitionWell: Color(0xFFFFF1D5),
+    eventWell: Color(0xFFFFE8ED),
+    wellInk: Color(0xFF263252),
+    imageFallback: Color(0xFFF0EFF7),
+    shadow: Color(0x14151A2D),
   );
 
   @override
@@ -135,7 +136,7 @@ class AppTheme {
   static ThemeData _build() {
     const palette = AppPalette.light;
     final scheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF235B4D),
+      seedColor: const Color(0xFF5B36D6),
       brightness: Brightness.light,
       dynamicSchemeVariant: DynamicSchemeVariant.fidelity,
       primary: palette.accent,
@@ -173,7 +174,7 @@ class AppTheme {
       palette.ink,
       palette.muted,
     );
-    final radius = BorderRadius.circular(14);
+    final radius = BorderRadius.circular(12);
     final outline = OutlineInputBorder(
       borderRadius: radius,
       borderSide: BorderSide(color: palette.line),
@@ -194,6 +195,7 @@ class AppTheme {
         backgroundColor: palette.card,
         foregroundColor: palette.ink,
         elevation: 0,
+        toolbarHeight: 60,
         scrolledUnderElevation: 0,
         surfaceTintColor: Colors.transparent,
         centerTitle: false,
@@ -210,14 +212,14 @@ class AppTheme {
         elevation: 0,
         margin: EdgeInsets.zero,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
+          borderRadius: BorderRadius.circular(16),
           side: BorderSide(color: palette.line),
         ),
       ),
       dialogTheme: DialogThemeData(
         backgroundColor: palette.card,
         surfaceTintColor: Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
         titleTextStyle: text.titleLarge?.copyWith(color: palette.ink),
         contentTextStyle: text.bodyMedium?.copyWith(color: palette.ink),
       ),
@@ -225,7 +227,7 @@ class AppTheme {
         backgroundColor: palette.card,
         surfaceTintColor: Colors.transparent,
         shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
         dragHandleColor: palette.line,
         dragHandleSize: const Size(36, 4),
@@ -236,7 +238,7 @@ class AppTheme {
         contentTextStyle: text.bodyMedium?.copyWith(
           color: scheme.onInverseSurface,
         ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
       dividerTheme: DividerThemeData(color: palette.line, thickness: 1, space: 1),
       progressIndicatorTheme: ProgressIndicatorThemeData(color: scheme.primary),
@@ -249,9 +251,9 @@ class AppTheme {
       ),
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
-          minimumSize: const Size(64, 46),
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          minimumSize: const Size(64, 42),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           textStyle: text.labelLarge,
           backgroundColor: scheme.primary,
           foregroundColor: scheme.onPrimary,
@@ -259,9 +261,9 @@ class AppTheme {
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          minimumSize: const Size(64, 48),
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          minimumSize: const Size(64, 42),
+          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           side: BorderSide(color: palette.line),
           foregroundColor: palette.ink,
           textStyle: text.labelLarge,
@@ -286,7 +288,7 @@ class AppTheme {
         hintStyle: text.bodyMedium?.copyWith(color: palette.muted),
         labelStyle: text.bodyMedium?.copyWith(color: palette.muted),
         helperStyle: text.bodySmall?.copyWith(color: palette.muted),
-        contentPadding: const EdgeInsets.symmetric(horizontal: 15, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         border: outline,
         enabledBorder: outline,
         focusedBorder: OutlineInputBorder(
@@ -314,7 +316,7 @@ class AppTheme {
         side: BorderSide(color: palette.line),
       ),
       navigationBarTheme: NavigationBarThemeData(
-        height: 68,
+        height: 64,
         backgroundColor: palette.card,
         surfaceTintColor: Colors.transparent,
         indicatorColor: palette.accentSoft,
@@ -348,6 +350,13 @@ class AppTheme {
         textColor: palette.ink,
         titleTextStyle: text.titleSmall?.copyWith(color: palette.ink),
         subtitleTextStyle: text.bodySmall?.copyWith(color: palette.muted),
+        tileColor: palette.card,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
+        minVerticalPadding: 10,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(14),
+          side: BorderSide(color: palette.line),
+        ),
       ),
       segmentedButtonTheme: SegmentedButtonThemeData(
         style: ButtonStyle(
@@ -368,66 +377,66 @@ class AppTheme {
         style?.copyWith(color: color);
     return headings.copyWith(
       displaySmall: paint(headings.displaySmall, ink)?.copyWith(
-        fontSize: 28,
-        height: 1.16,
+        fontSize: 25,
+        height: 1.14,
         fontWeight: FontWeight.w700,
         letterSpacing: -0.4,
       ),
       headlineMedium: paint(headings.headlineMedium, ink)?.copyWith(
-        fontSize: 22,
+        fontSize: 20,
         height: 1.2,
         fontWeight: FontWeight.w700,
         letterSpacing: -0.3,
       ),
       headlineSmall: paint(headings.headlineSmall, ink)?.copyWith(
-        fontSize: 19,
+        fontSize: 18,
         height: 1.22,
         fontWeight: FontWeight.w700,
         letterSpacing: -0.2,
       ),
       titleLarge: paint(headings.titleLarge, ink)?.copyWith(
-        fontSize: 17,
+        fontSize: 16,
         height: 1.28,
         fontWeight: FontWeight.w700,
       ),
       titleMedium: paint(headings.titleMedium, ink)?.copyWith(
-        fontSize: 15,
+        fontSize: 14,
         height: 1.35,
         fontWeight: FontWeight.w700,
       ),
       titleSmall: paint(headings.titleSmall, ink)?.copyWith(
-        fontSize: 14,
+        fontSize: 13,
         height: 1.3,
         fontWeight: FontWeight.w700,
       ),
       bodyLarge: paint(body.bodyLarge, ink)?.copyWith(
-        fontSize: 15,
-        height: 1.5,
+        fontSize: 14,
+        height: 1.45,
         fontWeight: FontWeight.w400,
       ),
       bodyMedium: paint(body.bodyMedium, ink)?.copyWith(
-        fontSize: 14,
-        height: 1.45,
+        fontSize: 13,
+        height: 1.42,
         fontWeight: FontWeight.w400,
       ),
       bodySmall: paint(body.bodySmall, muted)?.copyWith(
-        fontSize: 12,
-        height: 1.45,
+        fontSize: 11,
+        height: 1.4,
         fontWeight: FontWeight.w400,
       ),
       labelLarge: paint(headings.labelLarge, ink)?.copyWith(
-        fontSize: 14,
+        fontSize: 13,
         height: 1.2,
         fontWeight: FontWeight.w700,
         letterSpacing: 0.1,
       ),
       labelMedium: paint(headings.labelMedium, ink)?.copyWith(
-        fontSize: 13,
+        fontSize: 12,
         height: 1.2,
         fontWeight: FontWeight.w600,
       ),
       labelSmall: paint(headings.labelSmall, muted)?.copyWith(
-        fontSize: 11,
+        fontSize: 10,
         height: 1.25,
         fontWeight: FontWeight.w600,
         letterSpacing: 0.35,
@@ -475,6 +484,111 @@ class AppSectionHeader extends StatelessWidget {
         if (action != null && onAction != null)
           TextButton(onPressed: onAction, child: Text(action!)),
       ],
+    );
+  }
+}
+
+/// Consistent editorial heading used at the top of full-screen flows.
+class AppPageIntro extends StatelessWidget {
+  const AppPageIntro({
+    super.key,
+    required this.eyebrow,
+    required this.title,
+    this.description,
+  });
+
+  final String eyebrow;
+  final String title;
+  final String? description;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppPalette.of(context);
+    final text = Theme.of(context).textTheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          eyebrow.toUpperCase(),
+          style: text.labelSmall?.copyWith(
+            color: colors.accent,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.1,
+          ),
+        ),
+        const SizedBox(height: 5),
+        Text(title, style: text.headlineSmall?.copyWith(color: colors.ink)),
+        if (description != null) ...[
+          const SizedBox(height: 5),
+          Text(
+            description!,
+            style: text.bodySmall?.copyWith(color: colors.muted),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+/// A compact, pressable row surface for settings and utility destinations.
+class AppActionTile extends StatelessWidget {
+  const AppActionTile({
+    super.key,
+    required this.icon,
+    required this.title,
+    this.subtitle,
+    this.trailing,
+    this.onTap,
+  });
+
+  final IconData icon;
+  final String title;
+  final String? subtitle;
+  final Widget? trailing;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = AppPalette.of(context);
+    final text = Theme.of(context).textTheme;
+    return Material(
+      color: colors.card,
+      borderRadius: BorderRadius.circular(16),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Ink(
+          padding: const EdgeInsets.all(12),
+          decoration: appCardDecoration(context, radius: 16),
+          child: Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: colors.accentSoft,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(icon, size: 19, color: colors.onAccentSoft),
+              ),
+              const SizedBox(width: 11),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: text.titleSmall),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
+                      Text(subtitle!, style: text.bodySmall),
+                    ],
+                  ],
+                ),
+              ),
+              trailing ?? Icon(Icons.chevron_right, color: colors.muted),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -569,7 +683,7 @@ class AppLoading extends StatelessWidget {
   }
 }
 
-BoxDecoration appCardDecoration(BuildContext context, {double radius = 20}) {
+BoxDecoration appCardDecoration(BuildContext context, {double radius = 16}) {
   final colors = AppPalette.of(context);
   return BoxDecoration(
     color: colors.card,
@@ -578,8 +692,8 @@ BoxDecoration appCardDecoration(BuildContext context, {double radius = 20}) {
     boxShadow: [
       BoxShadow(
         color: colors.shadow,
-        blurRadius: 16,
-        offset: const Offset(0, 6),
+        blurRadius: 20,
+        offset: const Offset(0, 8),
       ),
     ],
   );

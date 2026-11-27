@@ -1195,7 +1195,7 @@ class _FormCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: colors.card,
           border: Border.all(color: colors.line),
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1218,15 +1218,15 @@ InputDecoration _decoration(BuildContext context, String hint) {
   final colors = AppPalette.of(context);
   return InputDecoration(
     hintText: hint,
-    hintStyle: TextStyle(color: colors.muted, fontSize: 14),
+    hintStyle: TextStyle(color: colors.muted, fontSize: 13),
     filled: true,
     fillColor: colors.canvas,
     border: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(12),
       borderSide: BorderSide(color: colors.line),
     ),
     enabledBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(12),
       borderSide: BorderSide(color: colors.line),
     ),
   );

@@ -70,9 +70,19 @@ class _NearbyClassesPageState extends State<NearbyClassesPage> {
       appBar: AppBar(title: const Text('Nearby classes')),
       body: Column(
         children: [
+          const Padding(
+            padding: EdgeInsets.fromLTRB(20, 16, 20, 12),
+            child: AppPageIntro(
+              eyebrow: 'Explore nearby',
+              title: 'Classes around you',
+              description: 'Tap a marker or browse the places below.',
+            ),
+          ),
           SizedBox(
-            height: 320,
-            child: FlutterMap(
+            height: 280,
+            child: ClipRRect(
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+              child: FlutterMap(
               options: MapOptions(initialCenter: center, initialZoom: 12),
               children: [
                 TileLayer(
@@ -104,26 +114,24 @@ class _NearbyClassesPageState extends State<NearbyClassesPage> {
                   ],
                 ),
               ],
+              ),
             ),
           ),
           Expanded(
             child: ListView.separated(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
               itemCount: places.length,
               separatorBuilder: (_, _) => const SizedBox(height: 8),
               itemBuilder: (context, index) {
                 final item = places[index];
                 final away = _distance(item);
-                return ListTile(
-                  tileColor: AppPalette.of(context).card,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  title: Text((item['title'] ?? 'Class').toString()),
-                  subtitle: Text(
-                    [
-                      (item['area'] ?? item['city'] ?? '').toString(),
-                      if (away.isNotEmpty) away,
-                    ].join(' · '),
-                  ),
+                return AppActionTile(
+                  icon: Icons.location_on_outlined,
+                  title: (item['title'] ?? 'Class').toString(),
+                  subtitle: [
+                    (item['area'] ?? item['city'] ?? '').toString(),
+                    if (away.isNotEmpty) away,
+                  ].join(' · '),
                   onTap: () => widget.onOpen(item),
                 );
               },
